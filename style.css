@@ -208,3 +208,31 @@ tbody tr:hover {
 .delete-btn:hover {
   background-color: #c53030;
 }
+.divider {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid #4a5568;
+}
+
+.secondary-btn {
+  margin-top: 8px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid #4fd1c5;
+  background-color: transparent;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.secondary-btn:hover {
+  background-color: #4fd1c5;
+  color: #1a202c;
+}
+
+.help-text {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: #a0aec0;
+}

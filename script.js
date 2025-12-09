@@ -26,6 +26,27 @@ const totalExpensesEl = document.getElementById("total-expenses");
 const balanceEl = document.getElementById("balance");
 const transactionListEl = document.getElementById("transaction-list");
 
+const bankFileInput = document.getElementById("bank-file");
+const importBtn = document.getElementById("import-btn");
+
+// Only add listeners if the elements exist (good practice)
+if (importBtn && bankFileInput) {
+  importBtn.addEventListener("click", () => {
+    const file = bankFileInput.files[0];
+    if (!file) {
+      alert("Please choose a CSV file first.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      importCsvText(text);
+    };
+    reader.readAsText(file);
+  });
+}
+
 // Handle form submit
 form.addEventListener("submit", (event) => {
   event.preventDefault(); // stop page refresh
@@ -112,6 +133,71 @@ function render() {
 
     transactionListEl.appendChild(tr);
   });
+}
+function importCsvText(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length <= 1) {
+    alert("CSV file seems to be empty.");
+    return;
+  }
+
+  // Read header row
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+
+  const typeIdx = headers.indexOf("type");
+  const descIdx = headers.indexOf("description");
+  const amountIdx = headers.indexOf("amount");
+
+  if (typeIdx === -1 || descIdx === -1 || amountIdx === -1) {
+    alert('Header row must contain "Type", "Description", and "Amount".');
+    return;
+  }
+
+  let importedCount = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue; // skip empty lines
+
+    const cols = line.split(",");
+    if (cols.length < 3) continue;
+
+    const rawType = cols[typeIdx].trim().toLowerCase();
+    const description = cols[descIdx].trim();
+    const amount = parseFloat(cols[amountIdx]);
+
+    if (!description || isNaN(amount) || amount <= 0) {
+      continue; // skip bad rows
+    }
+
+    const type =
+      rawType === "income"
+        ? "income"
+        : rawType === "expense"
+        ? "expense"
+        : null;
+
+    if (!type) {
+      continue; // skip if type is not recognized
+    }
+
+    transactions.push({
+      id: Date.now() + i,
+      type,
+      description,
+      amount
+    });
+
+    importedCount++;
+  }
+
+  if (importedCount === 0) {
+    alert("No valid rows found to import.");
+    return;
+  }
+
+  saveAndRender();
+  alert(`Imported ${importedCount} transactions from CSV.`);
 }
 
 function deleteTransaction(id) {
