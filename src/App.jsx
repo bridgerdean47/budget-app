@@ -1,12 +1,6 @@
 import { useState } from "react";
-/* ---------- Demo data ---------- */
 
-const monthSummary = {
-  monthLabel: "January 2026",
-  income: 4500,
-  fixed: 2330,
-  variable: 850,
-};
+/* ---------- Demo data ---------- */
 
 const goals = [
   {
@@ -57,6 +51,21 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [theme, setTheme] = useState("dark"); // "dark" | "sage"
   const [transactions, setTransactions] = useState(initialTransactions);
+  // Derived totals from imported transactions
+  const incomeFromCsv = transactions
+    .filter((t) => t.type === "income")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  // For now, keep fixed + variable as planned numbers you can later make editable
+  const fixedPlanned = 2330;
+  const variablePlanned = 850;
+
+  const monthSummary = {
+    monthLabel: "January 2026",
+    income: incomeFromCsv,
+    fixed: fixedPlanned,
+    variable: variablePlanned,
+  };
 
   const isDark = theme === "dark";
 
@@ -142,11 +151,13 @@ export default function App() {
 
       {/* ---------- MAIN CONTENT ---------- */}
       <main className="max-w-6xl mx-auto px-6 py-10">
-        {activeTab === "dashboard" && (
-          <DashboardPage theme={theme} cardClass={cardClass} />
-        )}
+{activeTab === "dashboard" && (
+  <DashboardPage theme={theme} cardClass={cardClass} monthSummary={monthSummary} />
+)}
 
-        {activeTab === "budget" && <BudgetPage cardClass={cardClass} />}
+{activeTab === "budget" && (
+  <BudgetPage cardClass={cardClass} monthSummary={monthSummary} />
+)}
 
         {activeTab === "transactions" && (
           <TransactionsPage
@@ -167,7 +178,7 @@ export default function App() {
 
 /* ---------- Dashboard with Sankey ---------- */
 
-function DashboardPage({ theme, cardClass }) {
+function DashboardPage({ theme, cardClass, monthSummary }) {
   const isDark = theme === "dark";
 
   const leftover =
@@ -244,7 +255,7 @@ function DashboardPage({ theme, cardClass }) {
       </section>
 
       {/* Cash-flow Sankey diagram */}
-      <CashFlowSankey theme={theme} />
+      <CashFlowSankey theme={theme} income={monthSummary.income} />
 
       {/* Goals preview */}
       <section>
@@ -264,7 +275,7 @@ function DashboardPage({ theme, cardClass }) {
 
 /* ---------- Budget tab ---------- */
 
-function BudgetPage({ cardClass }) {
+function BudgetPage({ cardClass, monthSummary }) {
   const leftover =
     monthSummary.income - monthSummary.fixed - monthSummary.variable;
 
@@ -490,38 +501,58 @@ function GoalsPage({ cardClass }) {
 
 /* ---------- Cash-flow Sankey ---------- */
 
-function CashFlowSankey({ theme }) {
+function CashFlowSankey({ theme, income }) {
   const isDark = theme === "dark";
 
-  // Simple demo structure: Income -> Savings / Fixed / Discretionary
-  const totalIncome = 4500;
+  // If no income yet (before CSV import), hide the chart
+  if (!income || income <= 0) return null;
 
-  const midNodes = [
-    { id: "savings", label: "Savings", value: 1500, colorDark: "#22c55e", colorLight: "#15803d" },
-    { id: "fixed", label: "Fixed", value: 1700, colorDark: "#fb7185", colorLight: "#b91c1c" },
-    { id: "disc", label: "Discretionary", value: 1300, colorDark: "#eab308", colorLight: "#a16207" },
+  // Define how income is split – you can adjust these percentages later,
+  // or eventually drive them from categorized transactions.
+  const flows = [
+    { id: "savings", label: "Savings", share: 0.33, colorDark: "#22c55e", colorLight: "#15803d" },
+    { id: "fixed", label: "Fixed", share: 0.38, colorDark: "#fb7185", colorLight: "#b91c1c" },
+    { id: "disc", label: "Discretionary", share: 0.29, colorDark: "#eab308", colorLight: "#a16207" },
   ];
 
+  const totalIncome = income;
+  const nodes = flows.map((f) => ({
+    ...f,
+    value: totalIncome * f.share,
+  }));
+
   const height = 260;
-  const width = 800;
+  const width = 820;
+  const frameRadius = 26;
 
-  // Layout positions
-  const leftX = 70;
-  const midX = 340;
-  const rightLabelX = 380;
+  const padding = 24;
+  const innerWidth = width - padding * 2;
+  const innerHeight = height - padding * 2;
 
-  // Compute ranges for the middle column stacked vertically
-  const padding = 10;
-  const usableHeight = height - 2 * padding;
+  const leftX = padding + 40;
+  const midX = padding + innerWidth * 0.55;
+  const labelX = midX + 60;
+
+  // Layout vertical positions for nodes on both left bar and mid column
+  const gap = 10;
+  const totalValue = nodes.reduce((s, n) => s + n.value, 0);
+  const usableHeight = innerHeight - gap * (nodes.length - 1);
   let offsetY = padding;
 
-  const midPositions = midNodes.map((node) => {
-    const h = (node.value / totalIncome) * usableHeight;
-    const yCenter = offsetY + h / 2;
-    const res = { ...node, h, yCenter };
-    offsetY += h;
-    return res;
+  const positions = nodes.map((node) => {
+    const h = (node.value / totalValue) * usableHeight;
+    const yTop = offsetY;
+    const yBottom = offsetY + h;
+    const yCenter = yTop + h / 2;
+    offsetY += h + gap;
+
+    return { ...node, h, yTop, yBottom, yCenter };
   });
+
+  const incomeBarTop = positions[0].yTop;
+  const incomeBarBottom = positions[positions.length - 1].yBottom;
+  const incomeBarHeight = incomeBarBottom - incomeBarTop;
+  const incomeBarY = incomeBarTop;
 
   return (
     <section className="mt-2 rounded-3xl border border-slate-800 bg-card/80 p-4">
@@ -529,101 +560,123 @@ function CashFlowSankey({ theme }) {
         CASH FLOW
       </h3>
 
-      <div className="overflow-hidden rounded-2xl bg-black/10">
+      <div className="overflow-hidden rounded-[26px] bg-black/20">
         <svg
           viewBox={`0 0 ${width} ${height}`}
           className="w-full h-64"
           role="img"
         >
-          {/* Background */}
+          {/* Rounded background */}
           <rect
             x="0"
             y="0"
             width={width}
             height={height}
+            rx={frameRadius}
             fill={isDark ? "#020617" : "#f4f3ec"}
           />
 
-          {/* Income bar on the left */}
+          {/* Inner panel to focus the flows */}
           <rect
-            x={leftX - 12}
+            x={padding + 40}
             y={padding}
-            width={24}
-            height={usableHeight}
-            rx={12}
+            width={innerWidth - 80}
+            height={innerHeight}
+            rx={22}
+            fill={isDark ? "#020617" : "#e7ebdd"}
+          />
+
+          {/* Income bar */}
+          <rect
+            x={leftX - 14}
+            y={incomeBarY}
+            width={28}
+            height={incomeBarHeight}
+            rx={14}
             fill={isDark ? "#06b6d4" : "#0f766e"}
           />
 
+          {/* Income label */}
           <text
-            x={leftX}
-            y={padding - 6}
-            textAnchor="middle"
+            x={leftX - 32}
+            y={incomeBarY + incomeBarHeight / 2 - 4}
+            textAnchor="end"
             fontSize="12"
             fill={isDark ? "#e5e7eb" : "#111827"}
           >
             Income
           </text>
+          <text
+            x={leftX - 32}
+            y={incomeBarY + incomeBarHeight / 2 + 11}
+            textAnchor="end"
+            fontSize="11"
+            fill={isDark ? "#9ca3af" : "#4b5563"}
+          >
+            ${totalIncome.toLocaleString()}
+          </text>
 
-          {/* Curved ribbons from Income to each category */}
-          {midPositions.map((node, index) => {
-            const startY = padding + usableHeight / 2;
-            const endY = node.yCenter;
-            const strokeWidth = (node.value / totalIncome) * usableHeight;
+          {/* Smooth, non-crossing ribbons */}
+          {positions.map((node) => {
+            const startCenter = (node.yTop + node.yBottom) / 2; // same segment on income bar
+            const endCenter = node.yCenter;
+            const thickness = (node.value / totalIncome) * incomeBarHeight * 0.75;
 
             const color = isDark ? node.colorDark : node.colorLight;
 
             const d = `
-              M ${leftX + 12} ${startY}
-              C ${(leftX + midX) / 2} ${startY},
-                ${(leftX + midX) / 2} ${endY},
-                ${midX - 20} ${endY}
+              M ${leftX + 14} ${startCenter}
+              C ${leftX + 80} ${startCenter},
+                ${midX - 80} ${endCenter},
+                ${midX - 24} ${endCenter}
             `;
 
             return (
-              <g key={node.id}>
-                <path
-                  d={d}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={strokeWidth}
-                  strokeOpacity={0.55}
-                  strokeLinecap="round"
-                />
-              </g>
+              <path
+                key={node.id}
+                d={d}
+                fill="none"
+                stroke={color}
+                strokeWidth={thickness}
+                strokeOpacity={0.35}
+                strokeLinecap="round"
+              />
             );
           })}
 
-          {/* Middle column bars and labels */}
-          {midPositions.map((node) => {
-            const barHeight = node.h * 0.7; // slightly thinner than ribbon
+          {/* Middle nodes + labels */}
+          {positions.map((node) => {
+            const barHeight = node.h * 0.55;
             const barY = node.yCenter - barHeight / 2;
             const color = isDark ? node.colorDark : node.colorLight;
+            const pct = Math.round((node.value / totalIncome) * 100);
 
             return (
               <g key={node.id}>
                 <rect
-                  x={midX - 14}
+                  x={midX - 16}
                   y={barY}
-                  width={28}
+                  width={32}
                   height={barHeight}
-                  rx={14}
+                  rx={16}
                   fill={color}
+                  fillOpacity={0.9}
                 />
                 <text
-                  x={rightLabelX}
-                  y={node.yCenter - 6}
+                  x={labelX}
+                  y={node.yCenter - 4}
                   fontSize="12"
                   fill={isDark ? "#e5e7eb" : "#111827"}
                 >
                   {node.label}
                 </text>
                 <text
-                  x={rightLabelX}
-                  y={node.yCenter + 10}
+                  x={labelX}
+                  y={node.yCenter + 11}
                   fontSize="11"
                   fill={isDark ? "#9ca3af" : "#4b5563"}
                 >
-                  ${node.value.toLocaleString()}
+                  ${node.value.toLocaleString()} · {pct}%
                 </text>
               </g>
             );
@@ -633,6 +686,7 @@ function CashFlowSankey({ theme }) {
     </section>
   );
 }
+
 
 /* ---------- Shared components ---------- */
 
