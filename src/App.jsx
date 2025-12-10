@@ -163,14 +163,19 @@ export default function App() {
 )}
 
         {activeTab === "transactions" && (
-          <TransactionsPage
-            theme={theme}
-            cardClass={cardClass}
-            transactions={transactions}
-            onAddTransactions={(newItems) =>
-              setTransactions((prev) => [...prev, ...newItems])
-            }
-          />
+<TransactionsPage
+  theme={theme}
+  cardClass={cardClass}
+  transactions={transactions}
+  onAddTransactions={(newItems) =>
+    setTransactions((prev) => [...prev, ...newItems])
+  }
+  onUpdateTransaction={(updatedTx) =>
+    setTransactions((prev) =>
+      prev.map((t) => (t.id === updatedTx.id ? updatedTx : t))
+    )
+  }
+/>
         )}
 
         {activeTab === "goals" && <GoalsPage cardClass={cardClass} />}
@@ -439,40 +444,55 @@ function TransactionsPage({
                       : "border-sageBorder hover:bg-sageBg")
                   }
                 >
-                  <td
-                    className={
-                      "px-4 py-2 " +
-                      (isDark ? "text-slate-200" : "text-sageText")
-                    }
-                  >
-                    {t.date}
-                  </td>
-                  <td
-                    className={
-                      "px-4 py-2 " +
-                      (isDark ? "text-slate-100" : "text-sageText")
-                    }
-                  >
-                    {t.description}
-                  </td>
-                  <td
-                    className={
-                      "px-4 py-2 " +
-                      (t.type === "income"
-                        ? "text-emerald-400"
-                        : "text-rose-400")
-                    }
-                  >
-                    {t.type === "income" ? "Income" : "Expense"}
-                  </td>
-                  <td
-                    className={
-                      "px-4 py-2 " +
-                      (isDark ? "text-slate-100" : "text-sageText")
-                    }
-                  >
-                    ${t.amount.toFixed(2)}
-                  </td>
+<td className="px-4 py-2">
+  <input
+    type="date"
+    value={t.date}
+    onChange={(e) =>
+      onUpdateTransaction({ ...t, date: e.target.value })
+    }
+    className="bg-transparent outline-none"
+  />
+</td>
+
+<td className="px-4 py-2">
+  <input
+    type="text"
+    value={t.description}
+    onChange={(e) =>
+      onUpdateTransaction({ ...t, description: e.target.value })
+    }
+    className="bg-transparent outline-none w-full"
+  />
+</td>
+
+<td className="px-4 py-2">
+  <select
+    value={t.type}
+    onChange={(e) =>
+      onUpdateTransaction({ ...t, type: e.target.value })
+    }
+    className="bg-transparent outline-none"
+  >
+    <option value="income">Income</option>
+    <option value="expense">Expense</option>
+  </select>
+</td>
+
+<td className="px-4 py-2">
+  <input
+    type="number"
+    value={t.amount}
+    onChange={(e) =>
+      onUpdateTransaction({
+        ...t,
+        amount: parseFloat(e.target.value) || 0,
+      })
+    }
+    className="bg-transparent outline-none w-24"
+  />
+</td>
+
                 </tr>
               ))}
             </tbody>
