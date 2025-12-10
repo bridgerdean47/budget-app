@@ -72,12 +72,25 @@ export default function App() {
       <header className={headerClass}>
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-xs font-semibold tracking-[0.25em] text-accentSoft">
-              BUDGET COMMAND CENTER
-            </h1>
-            <p className="text-[0.75rem] text-neutralSoft">
-              Dark cyber budgeting with themed goals
-            </p>
+            <div>
+  <h1
+    className={
+      "text-xs font-semibold tracking-[0.25em] " +
+      (isDark ? "text-accentSoft" : "text-sageAccent")
+    }
+  >
+    B&amp;M BUDGET
+  </h1>
+
+  <p
+    className={
+      "text-[0.75rem] " +
+      (isDark ? "text-neutralSoft" : "text-sageAccentSoft")
+    }
+  >
+  </p>
+</div>
+
           </div>
 
           <div className="flex items-center gap-4">
@@ -116,6 +129,7 @@ export default function App() {
         {activeTab === "dashboard" && (
   <DashboardPage cardClass={cardClass} theme={theme} />
 )}
+
         {activeTab === "budget" && <BudgetPage cardClass={cardClass} />}
         {activeTab === "transactions" && (
           <TransactionsPage cardClass={cardClass} />
