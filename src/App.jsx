@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
-import Papa from "papaparse";
-import { parseBankCsv } from "./utils/parseBankCsv";
 
-/* ---------- Demo data ---------- */
+/* ---------- Demo Goals ---------- */
 
 const goals = [
   {
@@ -23,66 +21,107 @@ const goals = [
   },
 ];
 
-const initialTransactions = [
-  {
-    id: 1,
-    date: "2026-01-03",
-    description: "Paycheck",
-    type: "income",
-    amount: 2200,
-  },
-  {
-    id: 2,
-    date: "2026-01-04",
-    description: "Rent",
-    type: "expense",
-    amount: 900,
-  },
-  {
-    id: 3,
-    date: "2026-01-06",
-    description: "Groceries",
-    type: "expense",
-    amount: 120.5,
-  },
-];
-
-/* ---------- Main app ---------- */
+/* ---------- Main App ---------- */
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [theme, setTheme] = useState("dark"); // "dark" | "sage"
-  const [transactions, setTransactions] = useState(initialTransactions);
+  const [theme, setTheme] = useState("dark"); // keep option, but we style dark
+  const [transactions, setTransactions] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState("all"); // "all" or "YYYY-MM"
 
-  // Load saved transactions from localStorage on first load
-useEffect(() => {
-  const saved = localStorage.getItem("transactions");
-  if (saved) {
-    setTransactions(JSON.parse(saved));
-  }
-}, []);
+  const isDark = theme === "dark";
 
-// Save transactions into localStorage whenever they change
-useEffect(() => {
-  localStorage.setItem("transactions", JSON.stringify(transactions));
-}, [transactions]);
-  // Derived totals from imported transactions
-  const incomeFromCsv = transactions
+  /* ---------- LocalStorage ---------- */
+
+  // Load once
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("transactions");
+      if (saved) {
+        setTransactions(JSON.parse(saved));
+      }
+    } catch (err) {
+      console.error("Error reading saved transactions", err);
+    }
+  }, []);
+
+  // Save on change
+  useEffect(() => {
+    try {
+      localStorage.setItem("transactions", JSON.stringify(transactions));
+    } catch (err) {
+      console.error("Error saving transactions", err);
+    }
+  }, [transactions]);
+
+  /* ---------- Month filtering + summary ---------- */
+
+  const filteredTransactions =
+    selectedMonth === "all"
+      ? transactions
+      : transactions.filter(
+          (t) => t.date && t.date.startsWith(selectedMonth)
+        );
+
+  const income = filteredTransactions
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + t.amount, 0);
 
-  // For now, keep fixed + variable as planned numbers you can later make editable
-  const fixedPlanned = 2330;
-  const variablePlanned = 850;
+  const payments = filteredTransactions
+    .filter((t) => t.type === "payment")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const expenses = filteredTransactions
+    .filter((t) => t.type === "expense")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const leftover = income - expenses - payments;
+
+  function formatMonthLabel(key) {
+    if (key === "all") return "All Months";
+    const [year, month] = key.split("-");
+    const names = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    const idx = parseInt(month, 10) - 1;
+    if (Number.isNaN(idx) || idx < 0 || idx > 11) return key;
+    return `${names[idx]} ${year}`;
+  }
 
   const monthSummary = {
-    monthLabel: "January 2026",
-    income: incomeFromCsv,
-    fixed: fixedPlanned,
-    variable: variablePlanned,
+    monthLabel: formatMonthLabel(selectedMonth),
+    income,
+    expenses,
+    payments,
+    leftover,
   };
 
-  const isDark = theme === "dark";
+  /* ---------- Styles (Black + Red theme) ---------- */
+
+  const appClass = "min-h-screen bg-[#050505] text-gray-100";
+
+  const headerClass =
+    "border-b sticky top-0 z-50 backdrop-blur bg-[#050505cc] border-red-900";
+
+  const navActive =
+    "px-4 py-1 rounded-full border transition border-red-500 bg-red-500/10 text-red-300";
+
+  const navInactive =
+    "px-4 py-1 rounded-full border transition border-gray-700 text-gray-300 hover:border-red-500 hover:text-red-300";
+
+  const cardClass =
+    "rounded-3xl p-6 border bg-[#080808] border-red-900 shadow-[0_0_40px_rgba(0,0,0,0.7)]";
 
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
@@ -91,44 +130,15 @@ useEffect(() => {
     { id: "goals", label: "Goals" },
   ];
 
-  const appClass =
-    "min-h-screen " +
-    (isDark ? "bg-shell text-slate-100" : "bg-sageBg text-sageText");
-
-  const headerClass =
-    "border-b sticky top-0 z-50 backdrop-blur " +
-    (isDark
-      ? "border-slate-800 bg-[#050816]/95"
-      : "border-sageBorder bg-sageBg/90");
-
-  const navActive =
-    "px-4 py-1 rounded-full border transition " +
-    (isDark
-      ? "border-accent bg-accent/10 text-accent"
-      : "border-sageAccent bg-sageAccent/10 text-sageAccent");
-
-  const navInactive =
-    "px-4 py-1 rounded-full border transition " +
-    (isDark
-      ? "border-slate-600 text-slate-300 hover:border-accent hover:text-accent"
-      : "border-sageBorder text-sageText hover:border-sageAccent hover:text-sageAccent");
-
-  const cardClass =
-    "rounded-3xl p-6 border " +
-    (isDark ? "bg-card border-slate-800" : "bg-sageCard border-sageBorder");
+  /* ---------- Render ---------- */
 
   return (
     <div className={appClass}>
-      {/* ---------- HEADER ---------- */}
+      {/* HEADER */}
       <header className={headerClass}>
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div>
-            <h1
-              className={
-                "text-xs font-semibold tracking-[0.25em] " +
-                (isDark ? "text-accentSoft" : "text-sageAccent")
-              }
-            >
+            <h1 className="text-xs font-semibold tracking-[0.25em] text-red-400">
               B&amp;M BUDGET
             </h1>
           </div>
@@ -146,48 +156,48 @@ useEffect(() => {
               ))}
             </nav>
 
-            {/* Theme dropdown */}
             <select
               value={theme}
               onChange={(e) => setTheme(e.target.value)}
-              className={
-                "text-xs rounded-full border px-3 py-1 outline-none cursor-pointer " +
-                (isDark
-                  ? "bg-shell border-slate-600 text-slate-200"
-                  : "bg-sageCard border-sageBorder text-sageText")
-              }
+              className="text-xs rounded-full border border-gray-700 bg-[#050505] text-gray-200 px-3 py-1 outline-none cursor-pointer"
             >
-              <option value="dark">Cyber dark</option>
-              <option value="sage">Sage &amp; cream</option>
+              <option value="dark">Dark</option>
+              <option value="sage">Sage (experimental)</option>
             </select>
           </div>
         </div>
       </header>
 
-      {/* ---------- MAIN CONTENT ---------- */}
+      {/* MAIN CONTENT */}
       <main className="max-w-6xl mx-auto px-6 py-10">
-{activeTab === "dashboard" && (
-  <DashboardPage theme={theme} cardClass={cardClass} monthSummary={monthSummary} />
-)}
+        {activeTab === "dashboard" && (
+          <DashboardPage
+            theme={theme}
+            cardClass={cardClass}
+            monthSummary={monthSummary}
+            selectedMonth={selectedMonth}
+            onMonthChange={setSelectedMonth}
+          />
+        )}
 
-{activeTab === "budget" && (
-  <BudgetPage cardClass={cardClass} monthSummary={monthSummary} />
-)}
+        {activeTab === "budget" && (
+          <BudgetPage cardClass={cardClass} monthSummary={monthSummary} />
+        )}
 
         {activeTab === "transactions" && (
-<TransactionsPage
-  theme={theme}
-  cardClass={cardClass}
-  transactions={transactions}
-  onAddTransactions={(newItems) =>
-    setTransactions((prev) => [...prev, ...newItems])
-  }
-  onUpdateTransaction={(updated) =>
-    setTransactions((prev) =>
-      prev.map((t) => (t.id === updated.id ? updated : t))
-    )
-  }
-/>
+          <TransactionsPage
+            theme={theme}
+            cardClass={cardClass}
+            transactions={transactions}
+            onAddTransactions={(newItems) =>
+              setTransactions((prev) => [...prev, ...newItems])
+            }
+            onUpdateTransaction={(updated) =>
+              setTransactions((prev) =>
+                prev.map((t) => (t.id === updated.id ? updated : t))
+              )
+            }
+          />
         )}
 
         {activeTab === "goals" && <GoalsPage cardClass={cardClass} />}
@@ -196,17 +206,21 @@ useEffect(() => {
   );
 }
 
-/* ---------- Dashboard with Sankey ---------- */
+/* ---------- Dashboard ---------- */
 
-function DashboardPage({ theme, cardClass, monthSummary }) {
+function DashboardPage({
+  theme,
+  cardClass,
+  monthSummary,
+  selectedMonth,
+  onMonthChange,
+}) {
   const isDark = theme === "dark";
-
-  const leftover =
-    monthSummary.income - monthSummary.fixed - monthSummary.variable;
 
   const allocationPercent =
     monthSummary.income > 0
-      ? ((monthSummary.fixed + monthSummary.variable) / monthSummary.income) *
+      ? ((monthSummary.expenses + monthSummary.payments) /
+          monthSummary.income) *
         100
       : 0;
 
@@ -214,16 +228,30 @@ function DashboardPage({ theme, cardClass, monthSummary }) {
     <div className="space-y-8">
       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
         <div>
-          <h2 className="text-3xl font-bold">{monthSummary.monthLabel}</h2>
+          <h2 className="text-3xl font-bold text-gray-100">
+            {monthSummary.monthLabel}
+          </h2>
         </div>
-        <p className="text-sm text-neutralSoft">
-          Overview of this month&apos;s money flow
-        </p>
+
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-gray-400">
+            Overview of this month&apos;s money flow
+          </p>
+          <select
+            value={selectedMonth}
+            onChange={(e) => onMonthChange(e.target.value)}
+            className="text-xs rounded-full border border-gray-700 bg-[#050505] px-3 py-1 outline-none text-gray-200"
+          >
+            <option value="all">All months</option>
+            {/* You can add specific months you care about */}
+            <option value="2025-11">Nov 2025</option>
+            <option value="2025-12">Dec 2025</option>
+          </select>
+        </div>
       </div>
 
-      {/* Month overview card */}
       <section className={cardClass}>
-        <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-neutralSoft">
+        <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-red-400">
           MONTH OVERVIEW
         </h3>
 
@@ -231,55 +259,43 @@ function DashboardPage({ theme, cardClass, monthSummary }) {
           <OverviewStat
             label="INCOME"
             value={monthSummary.income}
-            color={isDark ? "text-emerald-400" : "text-sageAccent"}
+            color={isDark ? "text-red-300" : "text-red-600"}
           />
           <OverviewStat
-            label="FIXED"
-            value={monthSummary.fixed}
-            color={isDark ? "text-rose-400" : "text-sageAccent"}
+            label="EXPENSES"
+            value={monthSummary.expenses}
+            color={isDark ? "text-red-400" : "text-red-700"}
           />
           <OverviewStat
-            label="VARIABLE"
-            value={monthSummary.variable}
-            color={isDark ? "text-amber-300" : "text-sageAccent"}
+            label="PAYMENTS"
+            value={monthSummary.payments}
+            color="text-red-500"
           />
           <OverviewStat
             label="LEFTOVER"
-            value={leftover}
-            color={isDark ? "text-cyan-300" : "text-sageAccent"}
+            value={monthSummary.leftover}
+            color={isDark ? "text-red-200" : "text-red-500"}
           />
         </div>
 
         <div className="mt-6 space-y-2">
-          <p className="text-xs text-neutralSoft uppercase tracking-[0.16em]">
+          <p className="text-xs text-gray-400 uppercase tracking-[0.16em]">
             Allocation this month
           </p>
 
-          <div
-            className={
-              "h-2 w-full overflow-hidden rounded-full " +
-              (isDark ? "bg-slate-900" : "bg-sageBorder")
-            }
-          >
+          <div className="h-2 w-full overflow-hidden rounded-full bg-black">
             <div
-              className={
-                "h-full w-full transition-all duration-700 " +
-                (isDark
-                  ? "bg-gradient-to-r from-fuchsia-400 via-cyan-400 to-emerald-300"
-                  : "bg-sageAccent")
-              }
-              style={{ clipPath: `inset(0 ${100 - allocationPercent}% 0 0)` }}
+              className="h-full transition-all duration-700 bg-gradient-to-r from-red-700 via-red-500 to-red-600"
+              style={{ width: `${Math.min(100, allocationPercent)}%` }}
             />
           </div>
         </div>
       </section>
 
-      {/* Cash-flow Sankey diagram */}
       <CashFlowSankey theme={theme} income={monthSummary.income} />
 
-      {/* Goals preview */}
       <section>
-        <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-neutralSoft">
+        <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-red-400">
           GOALS
         </h3>
 
@@ -293,25 +309,24 @@ function DashboardPage({ theme, cardClass, monthSummary }) {
   );
 }
 
-/* ---------- Budget tab ---------- */
+/* ---------- Budget ---------- */
 
 function BudgetPage({ cardClass, monthSummary }) {
-  const leftover =
-    monthSummary.income - monthSummary.fixed - monthSummary.variable;
+  const { income, expenses, payments, leftover } = monthSummary;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-3xl font-bold">Budget</h2>
-      <p className="text-neutralSoft text-sm">
+      <h2 className="text-3xl font-bold text-gray-100">Budget</h2>
+      <p className="text-gray-400 text-sm">
         High-level breakdown of this month&apos;s plan.
       </p>
 
       <section className={cardClass}>
-        <h3 className="text-sm font-medium mb-3">Planned amounts</h3>
-        <ul className="space-y-1 text-sm">
-          <li>Income: ${monthSummary.income.toFixed(2)}</li>
-          <li>Fixed costs: ${monthSummary.fixed.toFixed(2)}</li>
-          <li>Variable: ${monthSummary.variable.toFixed(2)}</li>
+        <h3 className="text-sm font-medium mb-3 text-red-300">Totals</h3>
+        <ul className="space-y-1 text-sm text-gray-200">
+          <li>Income: ${income.toFixed(2)}</li>
+          <li>Expenses: ${expenses.toFixed(2)}</li>
+          <li>Payments: ${payments.toFixed(2)}</li>
           <li>Leftover: ${leftover.toFixed(2)}</li>
         </ul>
       </section>
@@ -319,7 +334,7 @@ function BudgetPage({ cardClass, monthSummary }) {
   );
 }
 
-/* ---------- Transactions tab with CSV import + modal editing ---------- */
+/* ---------- Transactions + modal editing ---------- */
 
 function TransactionsPage({
   theme,
@@ -328,10 +343,8 @@ function TransactionsPage({
   onAddTransactions,
   onUpdateTransaction,
 }) {
-  const isDark = theme === "dark";
-
   const [file, setFile] = useState(null);
-  const [editing, setEditing] = useState(null); // <-- REQUIRED
+  const [editing, setEditing] = useState(null);
 
   const handleImport = () => {
     if (!file) {
@@ -356,28 +369,30 @@ function TransactionsPage({
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h2 className="text-3xl font-bold">Transactions</h2>
-        <p className="text-neutralSoft text-sm">
+        <h2 className="text-3xl font-bold text-gray-100">Transactions</h2>
+        <p className="text-gray-400 text-sm">
           Upload a bank CSV or click a row to edit it.
         </p>
       </div>
 
-      {/* Import card */}
       <section className={cardClass}>
-        <h3 className="text-xs font-semibold tracking-[0.28em] text-neutralSoft">
+        <h3 className="text-xs font-semibold tracking-[0.28em] text-red-400">
           BANK STATEMENT IMPORT (CSV)
         </h3>
 
+        <p className="mt-3 text-xs text-gray-400">
+          Supported formats:
+          <br />
+          1) Type, Description, Amount, Date
+          <br />
+          2) Date, Description, Amount
+          <br />
+          3) Chase credit card CSV
+        </p>
+
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
           <label className="inline-flex cursor-pointer flex-col gap-2">
-            <span
-              className={
-                "inline-flex items-center justify-center rounded-full border px-4 py-1.5 " +
-                (isDark
-                  ? "border-accent bg-accent/10 text-accent hover:bg-accent hover:text-slate-900"
-                  : "border-sageAccent bg-sageAccent/10 text-sageAccent hover:bg-sageAccent hover:text-sageCard")
-              }
-            >
+            <span className="inline-flex items-center justify-center rounded-full border px-4 py-1.5 border-red-500 bg-red-500/10 text-red-300 hover:bg-red-500 hover:text-black transition">
               Choose CSV file
             </span>
             <input
@@ -391,81 +406,70 @@ function TransactionsPage({
           <button
             type="button"
             onClick={handleImport}
-            className={
-              "rounded-full border px-4 py-1.5 text-xs transition " +
-              (isDark
-                ? "border-accent text-accent hover:bg-accent hover:text-slate-900"
-                : "border-sageAccent text-sageAccent hover:bg-sageAccent hover:text-sageCard")
-            }
+            className="rounded-full border px-4 py-1.5 text-xs transition border-red-500 text-red-300 hover:bg-red-500 hover:text-black"
           >
             Import CSV
           </button>
 
           {file && (
-            <span className="text-[0.7rem] text-neutralSoft">
+            <span className="text-[0.7rem] text-gray-400">
               Selected: {file.name}
             </span>
           )}
         </div>
       </section>
 
-      {/* Transactions table */}
       <section className={cardClass}>
-        <h3 className="mb-3 text-sm font-medium">Imported + sample transactions</h3>
+        <h3 className="mb-3 text-sm font-medium text-red-300">
+          Imported transactions ({transactions.length})
+        </h3>
 
-        <div className="overflow-x-auto rounded-2xl border border-slate-700/40">
+        <div className="overflow-x-auto rounded-2xl border border-red-900/60">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr
-                className={
-                  isDark ? "bg-shell text-slate-200" : "bg-sageBg text-sageText"
-                }
-              >
-                <th className="px-4 py-3 text-left border-b border-slate-700/60 font-semibold">
+              <tr className="bg-[#111111] text-gray-200 border-b border-red-900">
+                <th className="px-4 py-3 text-left font-semibold">
                   Date
                 </th>
-                <th className="px-4 py-3 text-left border-b border-slate-700/60 font-semibold">
+                <th className="px-4 py-3 text-left font-semibold">
                   Description
                 </th>
-                <th className="px-4 py-3 text-left border-b border-slate-700/60 font-semibold">
+                <th className="px-4 py-3 text-left font-semibold">
                   Type
                 </th>
-                <th className="px-4 py-3 text-left border-b border-slate-700/60 font-semibold">
+                <th className="px-4 py-3 text-left font-semibold">
                   Amount
                 </th>
               </tr>
             </thead>
-
             <tbody>
               {transactions.map((t) => (
                 <tr
                   key={t.id}
                   onClick={() => setEditing(t)}
-                  className={
-                    "cursor-pointer border-b " +
-                    (isDark
-                      ? "border-slate-700/50 hover:bg-slate-800/40"
-                      : "border-sageBorder hover:bg-sageBg")
-                  }
+                  className="cursor-pointer border-b border-gray-800 hover:bg-[#111111]"
                 >
-                  <td className={isDark ? "px-4 py-2 text-slate-200" : "px-4 py-2"}>
-                    {t.date}
-                  </td>
-
-                  <td className={isDark ? "px-4 py-2 text-slate-100" : "px-4 py-2"}>
+                  <td className="px-4 py-2 text-gray-200">{t.date}</td>
+                  <td className="px-4 py-2 text-gray-100">
                     {t.description}
                   </td>
-
                   <td
                     className={
                       "px-4 py-2 " +
-                      (t.type === "income" ? "text-emerald-400" : "text-rose-400")
+                      (t.type === "income"
+                        ? "text-red-200"
+                        : t.type === "payment"
+                        ? "text-red-300"
+                        : "text-red-400")
                     }
                   >
-                    {t.type === "income" ? "Income" : "Expense"}
+                    {t.type === "income"
+                      ? "Income"
+                      : t.type === "payment"
+                      ? "Payment"
+                      : "Expense"}
                   </td>
-
-                  <td className={isDark ? "px-4 py-2 text-slate-100" : "px-4 py-2"}>
+                  <td className="px-4 py-2 text-gray-100">
                     ${t.amount.toFixed(2)}
                   </td>
                 </tr>
@@ -475,19 +479,19 @@ function TransactionsPage({
         </div>
       </section>
 
-      {/* ---------- EDIT MODAL ---------- */}
+      {/* Modal editor */}
       {editing && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl space-y-4">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+          <div className="bg-[#101010] rounded-xl p-6 w-full max-w-md shadow-xl space-y-4 border border-red-700">
+            <h3 className="text-xl font-semibold mb-2 text-gray-100">
+              Edit Transaction
+            </h3>
 
-            <h3 className="text-xl font-semibold mb-2">Edit Transaction</h3>
-
-            {/* Description */}
             <div className="space-y-1">
-              <label className="text-sm">Description</label>
+              <label className="text-sm text-gray-300">Description</label>
               <input
                 type="text"
-                className="w-full p-2 rounded bg-slate-200 dark:bg-slate-700"
+                className="w-full p-2 rounded bg-black text-gray-100 border border-gray-800"
                 value={editing.description}
                 onChange={(e) =>
                   setEditing({ ...editing, description: e.target.value })
@@ -495,12 +499,11 @@ function TransactionsPage({
               />
             </div>
 
-            {/* Date */}
             <div className="space-y-1">
-              <label className="text-sm">Date</label>
+              <label className="text-sm text-gray-300">Date</label>
               <input
                 type="text"
-                className="w-full p-2 rounded bg-slate-200 dark:bg-slate-700"
+                className="w-full p-2 rounded bg-black text-gray-100 border border-gray-800"
                 value={editing.date}
                 onChange={(e) =>
                   setEditing({ ...editing, date: e.target.value })
@@ -508,11 +511,10 @@ function TransactionsPage({
               />
             </div>
 
-            {/* Type */}
             <div className="space-y-1">
-              <label className="text-sm">Type</label>
+              <label className="text-sm text-gray-300">Type</label>
               <select
-                className="w-full p-2 rounded bg-slate-200 dark:bg-slate-700"
+                className="w-full p-2 rounded bg-black text-gray-100 border border-gray-800"
                 value={editing.type}
                 onChange={(e) =>
                   setEditing({ ...editing, type: e.target.value })
@@ -520,15 +522,15 @@ function TransactionsPage({
               >
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
+                <option value="payment">Payment</option>
               </select>
             </div>
 
-            {/* Amount */}
             <div className="space-y-1">
-              <label className="text-sm">Amount</label>
+              <label className="text-sm text-gray-300">Amount</label>
               <input
                 type="number"
-                className="w-full p-2 rounded bg-slate-200 dark:bg-slate-700"
+                className="w-full p-2 rounded bg-black text-gray-100 border border-gray-800"
                 value={editing.amount}
                 onChange={(e) =>
                   setEditing({
@@ -539,17 +541,15 @@ function TransactionsPage({
               />
             </div>
 
-            {/* Buttons */}
             <div className="flex justify-end gap-3 pt-4">
               <button
-                className="px-4 py-2 rounded bg-gray-300 dark:bg-slate-600"
+                className="px-4 py-2 rounded bg-gray-800 text-gray-100 hover:bg-gray-700"
                 onClick={() => setEditing(null)}
               >
                 Cancel
               </button>
-
               <button
-                className="px-4 py-2 rounded bg-emerald-500 text-white"
+                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-500"
                 onClick={() => {
                   onUpdateTransaction(editing);
                   setEditing(null);
@@ -558,12 +558,9 @@ function TransactionsPage({
                 Save
               </button>
             </div>
-
           </div>
         </div>
       )}
-      {/* ---------- END MODAL ---------- */}
-
     </div>
   );
 }
@@ -573,13 +570,13 @@ function TransactionsPage({
 function GoalsPage({ cardClass }) {
   return (
     <div className="space-y-4">
-      <h2 className="text-3xl font-bold">Goals</h2>
-      <p className="text-neutralSoft text-sm">
-        We will add goal creation / editing here.
+      <h2 className="text-3xl font-bold text-gray-100">Goals</h2>
+      <p className="text-gray-400 text-sm">
+        We will add goal creation / editing here later.
       </p>
 
       <section className={cardClass}>
-        <p className="text-neutralSoft text-sm">
+        <p className="text-gray-400 text-sm">
           For now, goals are visible on the Dashboard.
         </p>
       </section>
@@ -592,14 +589,30 @@ function GoalsPage({ cardClass }) {
 function CashFlowSankey({ theme, income }) {
   const isDark = theme === "dark";
 
-  // Hide card if no income yet
   if (!income || income <= 0) return null;
 
-  // Split income – adjust shares later if you want
   const flows = [
-    { id: "savings", label: "Savings", share: 0.33, colorDark: "#22c55e", colorLight: "#15803d" },
-    { id: "fixed", label: "Fixed", share: 0.38, colorDark: "#fb7185", colorLight: "#b91c1c" },
-    { id: "disc", label: "Discretionary", share: 0.29, colorDark: "#eab308", colorLight: "#a16207" },
+    {
+      id: "savings",
+      label: "Savings",
+      share: 0.33,
+      colorDark: "#fecaca", // light red
+      colorLight: "#f87171",
+    },
+    {
+      id: "fixed",
+      label: "Fixed",
+      share: 0.38,
+      colorDark: "#ef4444",
+      colorLight: "#b91c1c",
+    },
+    {
+      id: "disc",
+      label: "Discretionary",
+      share: 0.29,
+      colorDark: "#7f1d1d",
+      colorLight: "#450a0a",
+    },
   ];
 
   const slices = flows.map((f) => ({
@@ -609,7 +622,6 @@ function CashFlowSankey({ theme, income }) {
 
   const total = slices.reduce((s, x) => s + x.value, 0);
 
-  // Helper to build a donut arc path
   const makeArcPath = (cx, cy, rOuter, rInner, startAngle, endAngle) => {
     const toRad = (deg) => ((deg - 90) * Math.PI) / 180;
 
@@ -639,7 +651,6 @@ function CashFlowSankey({ theme, income }) {
     ].join(" ");
   };
 
-  // Compute angles for each slice
   let currentAngle = 0;
   const withAngles = slices.map((s) => {
     const sliceAngle = total > 0 ? (s.value / total) * 360 : 0;
@@ -655,26 +666,19 @@ function CashFlowSankey({ theme, income }) {
   const innerRadius = 45;
 
   return (
-    <section className="mt-2 rounded-3xl border border-slate-800 bg-card/80 p-4">
-      <h3 className="mb-2 text-xs font-semibold tracking-[0.28em] text-neutralSoft">
+    <section className="mt-2 rounded-3xl border border-red-900 bg-black p-4">
+      <h3 className="mb-2 text-xs font-semibold tracking-[0.28em] text-red-400">
         CASH FLOW
       </h3>
 
-      <div
-        className={
-          "rounded-2xl px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-6 " +
-          (isDark ? "bg-[#020617]" : "bg-sageCard")
-        }
-      >
-        {/* Left: donut chart */}
+      <div className="rounded-2xl px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-6 bg-[#050505]">
         <div className="flex justify-center items-center">
           <svg width="180" height="180" viewBox="0 0 180 180">
-            {/* Background ring */}
             <circle
               cx={cx}
               cy={cy}
               r={outerRadius}
-              fill={isDark ? "#020617" : "#e7ebdd"}
+              fill={isDark ? "#050505" : "#e7ebdd"}
             />
 
             {withAngles.map((slice) => {
@@ -693,19 +697,22 @@ function CashFlowSankey({ theme, income }) {
                   d={d}
                   fill={color}
                   fillOpacity={0.9}
-                  stroke={isDark ? "#020617" : "#e7ebdd"}
+                  stroke={isDark ? "#050505" : "#e7ebdd"}
                   strokeWidth={1}
                 />
               );
             })}
 
-            {/* Center label */}
-            <circle cx={cx} cy={cy} r={innerRadius - 6} fill={isDark ? "#020617" : "#f4f3ec"} />
+            <circle
+              cx={cx}
+              cy={cy}
+              r={innerRadius - 6}
+              fill={isDark ? "#050505" : "#f4f3ec"}
+            />
             <text
               x={cx}
               y={cy - 6}
               textAnchor="middle"
-              className="text-xs"
               fill={isDark ? "#e5e7eb" : "#111827"}
             >
               Income
@@ -714,7 +721,6 @@ function CashFlowSankey({ theme, income }) {
               x={cx}
               y={cy + 12}
               textAnchor="middle"
-              className="text-sm font-semibold"
               fill={isDark ? "#e5e7eb" : "#111827"}
             >
               ${income.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -722,7 +728,6 @@ function CashFlowSankey({ theme, income }) {
           </svg>
         </div>
 
-        {/* Right: legend */}
         <div className="flex-1 space-y-3">
           {withAngles.map((slice) => {
             const pct = total > 0 ? Math.round((slice.value / total) * 100) : 0;
@@ -737,11 +742,16 @@ function CashFlowSankey({ theme, income }) {
                     className="inline-block h-3 w-3 rounded-full"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="font-medium">{slice.label}</span>
+                  <span className="font-medium text-gray-100">
+                    {slice.label}
+                  </span>
                 </div>
-                <div className="text-right text-neutralSoft">
+                <div className="text-right text-gray-400">
                   <span className="mr-2">
-                    ${slice.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    $
+                    {slice.value.toLocaleString(undefined, {
+                      maximumFractionDigits: 0,
+                    })}
                   </span>
                   <span>{pct}%</span>
                 </div>
@@ -754,14 +764,12 @@ function CashFlowSankey({ theme, income }) {
   );
 }
 
-
-
 /* ---------- Shared components ---------- */
 
 function OverviewStat({ label, value, color }) {
   return (
     <div className="space-y-1">
-      <p className="text-[0.7rem] tracking-[0.18em] text-neutralSoft">
+      <p className="text-[0.7rem] tracking-[0.18em] text-gray-400">
         {label}
       </p>
       <p className={`text-xl font-semibold ${color}`}>
@@ -779,46 +787,29 @@ function GoalCard({ goal, theme }) {
     <div
       className={
         "rounded-2xl p-4 border flex flex-col gap-3 " +
-        (isDark ? "bg-card border-slate-800" : "bg-sageCard border-sageBorder")
+        (isDark ? "bg-[#050505] border-red-900" : "bg-slate-100")
       }
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div
-            className={
-              "flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold " +
-              (isDark
-                ? "bg-accent/15 text-accent"
-                : "bg-sageAccent/15 text-sageAccent")
-            }
-          >
+          <div className="flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold bg-red-500/15 text-red-300">
             {goal.code}
           </div>
           <div>
-            <h4 className="font-medium">{goal.label}</h4>
-            <p className="text-xs text-neutralSoft">
+            <h4 className="font-medium text-gray-100">{goal.label}</h4>
+            <p className="text-xs text-gray-400">
               Plan: ${goal.planPerMonth}/mo
             </p>
           </div>
         </div>
-        <p className="text-sm">
+        <p className="text-sm text-gray-200">
           ${goal.current} / ${goal.target}
         </p>
       </div>
 
-      <div
-        className={
-          "h-2 w-full overflow-hidden rounded-full " +
-          (isDark ? "bg-slate-900" : "bg-sageBorder")
-        }
-      >
+      <div className="h-2 w-full overflow-hidden rounded-full bg-black">
         <div
-          className={
-            "h-full transition-all duration-700 " +
-            (isDark
-              ? "bg-gradient-to-r from-fuchsia-400 via-cyan-400 to-emerald-300"
-              : "bg-sageAccent")
-          }
+          className="h-full transition-all duration-700 bg-gradient-to-r from-red-800 via-red-500 to-red-400"
           style={{ width: `${p}%` }}
         />
       </div>
@@ -826,10 +817,9 @@ function GoalCard({ goal, theme }) {
   );
 }
 
-// --- CSV helpers ----------------------------------------------------
+/* ---------- CSV helpers ---------- */
 
 function splitCsvLine(line) {
-  // Split a CSV line while respecting quotes
   const result = [];
   let current = "";
   let inQuotes = false;
@@ -839,7 +829,6 @@ function splitCsvLine(line) {
 
     if (c === '"') {
       if (inQuotes && line[i + 1] === '"') {
-        // Escaped quote
         current += '"';
         i++;
       } else {
@@ -857,7 +846,6 @@ function splitCsvLine(line) {
 }
 
 function isIsoDate(str) {
-  // YYYY-MM-DD
   return /^\d{4}-\d{2}-\d{2}$/.test(str);
 }
 
@@ -868,7 +856,6 @@ function parseCsv(text, startId = 0) {
   const result = [];
   let idCounter = startId + 1;
 
-  // ----- Inspect header -----------------------------------------------------------------
   let startIndex = 0;
   let headerCols = [];
   let headerLower = [];
@@ -880,7 +867,7 @@ function parseCsv(text, startId = 0) {
     headerLower = headerCols.map((c) => c.toLowerCase());
   }
 
-  // Bank format #1: ExportedTransactions.csv
+  // Example “bank1” format: Posting Date, Transaction Type, Amount, Description...
   const hasBank1Header =
     headerLower.includes("posting date") &&
     headerLower.includes("transaction type") &&
@@ -891,7 +878,9 @@ function parseCsv(text, startId = 0) {
     bank1 = {
       postingIdx: headerLower.indexOf("posting date"),
       txnTypeIdx: headerLower.indexOf("transaction type"),
-      amountIdx: headerLower.findIndex((c) => c === "amount" || c.startsWith("amount")),
+      amountIdx: headerLower.findIndex(
+        (c) => c === "amount" || c.startsWith("amount")
+      ),
       descIdx: (() => {
         let idx = headerLower.findIndex((c) =>
           c.includes("extended description")
@@ -903,7 +892,7 @@ function parseCsv(text, startId = 0) {
     };
   }
 
-  // Bank format #2: Money Market Transactions.csv
+  // Example “bank2” format: Account ID, Transaction ID, Date, Description, Amount...
   const hasBank2Header =
     headerLower.includes("account id") &&
     headerLower.includes("transaction id") &&
@@ -915,12 +904,13 @@ function parseCsv(text, startId = 0) {
     bank2 = {
       dateIdx: headerLower.indexOf("date"),
       descIdx: headerLower.indexOf("description"),
-      amountIdx: headerLower.findIndex((c) => c === "amount" || c.startsWith("amount")),
+      amountIdx: headerLower.findIndex(
+        (c) => c === "amount" || c.startsWith("amount")
+      ),
     };
   }
 
-  // Bank format #3: Chase credit card CSV
-  // Headers: Transaction Date, Post Date, Description, Category, Type, Amount, Memo
+  // Chase credit card CSV: Transaction Date, Post Date, Description, Category, Type, Amount, Memo
   const hasChaseHeader =
     headerLower.includes("transaction date") &&
     headerLower.includes("description") &&
@@ -932,16 +922,16 @@ function parseCsv(text, startId = 0) {
       dateIdx: headerLower.indexOf("transaction date"),
       descIdx: headerLower.indexOf("description"),
       amountIdx: headerLower.indexOf("amount"),
-      typeIdx: headerLower.indexOf("type"), // may be -1 if not present
+      typeIdx: headerLower.indexOf("type"),
     };
   }
 
-  // Generic headers for simple formats
   const hasSimpleHeader =
     headerLower.includes("type") &&
     headerLower.some((c) => c.startsWith("description")) &&
     headerLower.some((c) => c.startsWith("amount")) &&
     headerLower.some((c) => c.startsWith("date"));
+
   const hasDateDescAmountHeader =
     headerLower.includes("date") &&
     headerLower.some((c) => c.startsWith("description")) &&
@@ -954,10 +944,8 @@ function parseCsv(text, startId = 0) {
     hasSimpleHeader ||
     hasDateDescAmountHeader
   ) {
-    startIndex = 1; // skip header row
+    startIndex = 1;
   }
-
-  // ----- Parse data lines ----------------------------------------------------------------
 
   for (let i = startIndex; i < lines.length; i++) {
     const raw = lines[i].trim();
@@ -968,7 +956,7 @@ function parseCsv(text, startId = 0) {
     );
     if (cols.length < 3) continue;
 
-    /* ===== Bank format #1: ExportedTransactions.csv ===== */
+    /* Bank format 1 */
     if (bank1) {
       const { postingIdx, txnTypeIdx, amountIdx, descIdx } = bank1;
       if (
@@ -979,12 +967,12 @@ function parseCsv(text, startId = 0) {
         const postingRaw = cols[postingIdx];
         const txnTypeRaw = cols[txnTypeIdx];
         const amountRaw = cols[amountIdx];
-        const descRaw = descIdx >= 0 && descIdx < cols.length ? cols[descIdx] : "";
+        const descRaw =
+          descIdx >= 0 && descIdx < cols.length ? cols[descIdx] : "";
 
         let amount = parseFloat(amountRaw.replace(/,/g, ""));
         if (!Number.isFinite(amount)) continue;
 
-        // convert MM/DD/YYYY -> YYYY-MM-DD
         let date = postingRaw;
         const m = postingRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
         if (m) {
@@ -993,9 +981,9 @@ function parseCsv(text, startId = 0) {
           date = `${m[3]}-${mm}-${dd}`;
         }
 
-        const txnTypeLower = txnTypeRaw.toLowerCase();
+        const typeLower = txnTypeRaw.toLowerCase();
         const type =
-          txnTypeLower === "credit" || amount > 0 ? "income" : "expense";
+          typeLower === "credit" || amount > 0 ? "income" : "expense";
 
         result.push({
           id: idCounter++,
@@ -1005,10 +993,10 @@ function parseCsv(text, startId = 0) {
           amount: Math.abs(amount),
         });
       }
-      continue; // we handled this line
+      continue;
     }
 
-    /* ===== Bank format #2: Money Market Transactions.csv ===== */
+    /* Bank format 2 */
     if (bank2) {
       const { dateIdx, descIdx, amountIdx } = bank2;
       if (
@@ -1044,10 +1032,10 @@ function parseCsv(text, startId = 0) {
           amount: Math.abs(amount),
         });
       }
-      continue; // handled as bank2
+      continue;
     }
 
-        /* ===== Bank format #3: Chase credit card CSV ===== */
+    /* Chase credit card */
     if (chase) {
       const { dateIdx, descIdx, amountIdx, typeIdx } = chase;
 
@@ -1062,13 +1050,9 @@ function parseCsv(text, startId = 0) {
         const typeRaw =
           typeIdx >= 0 && typeIdx < cols.length ? cols[typeIdx] : "";
 
-        // parse amount (e.g. "-59.95")
         let amount = parseFloat(amountRaw.replace(/,/g, ""));
-        if (!Number.isFinite(amount)) {
-          continue;
-        }
+        if (!Number.isFinite(amount)) continue;
 
-        // convert MM/DD/YYYY -> YYYY-MM-DD
         let date = dateRaw;
         const m = dateRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
         if (m) {
@@ -1077,16 +1061,24 @@ function parseCsv(text, startId = 0) {
           date = `${m[3]}-${mm}-${dd}`;
         }
 
-        // Determine income vs expense
-        const tLower = typeRaw.toLowerCase();
+        const descLower = descRaw.toLowerCase();
+        const typeLower = typeRaw.toLowerCase();
         let type = "expense";
+
         if (
-          amount > 0 ||
-          tLower.includes("payment") ||
-          tLower.includes("refund") ||
-          tLower.includes("credit")
+          descLower.includes("refund") ||
+          descLower.includes("credit") ||
+          typeLower.includes("refund") ||
+          typeLower.includes("credit")
         ) {
           type = "income";
+        } else if (descLower.includes("payment")) {
+          // e.g. "Payment Thank You-Mobile"
+          type = "payment";
+        } else if (amount < 0) {
+          type = "expense";
+        } else {
+          type = "expense";
         }
 
         result.push({
@@ -1097,11 +1089,10 @@ function parseCsv(text, startId = 0) {
           amount: Math.abs(amount),
         });
       }
-
-      continue; // this row handled by Chase parser
+      continue;
     }
 
-    /* ===== Simple format A: Type, Description, Amount, Date ===== */
+    /* Simple format A: Type, Description, Amount, Date */
     const firstLower = cols[0].toLowerCase();
     if (
       (firstLower === "income" || firstLower === "expense") &&
@@ -1124,7 +1115,7 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
-    /* ===== Simple format B: Date, Description, Amount (YYYY-MM-DD) ===== */
+    /* Simple format B: Date, Description, Amount (YYYY-MM-DD) */
     if (isIsoDate(cols[0])) {
       const [dateRaw, desc, amountRaw] = cols;
       let amount = parseFloat(amountRaw.replace(/,/g, ""));
@@ -1143,8 +1134,7 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
-    /* ===== Fallback format C: Description, 20251130:xxxx, Amount ===== */
-    // Used for some older exports where 2nd col is YYYYMMDD:...
+    /* Fallback format C: Description, 20251130:xxxx, Amount */
     if (/^\d{8}:/.test(cols[1])) {
       const desc = cols[0];
       const code = cols[1];
@@ -1153,7 +1143,7 @@ function parseCsv(text, startId = 0) {
       let amount = parseFloat(amountRaw.replace(/,/g, ""));
       if (!Number.isFinite(amount)) continue;
 
-      const dateDigits = code.slice(0, 8); // YYYYMMDD
+      const dateDigits = code.slice(0, 8);
       const date =
         dateDigits.slice(0, 4) +
         "-" +
@@ -1172,8 +1162,6 @@ function parseCsv(text, startId = 0) {
       });
       continue;
     }
-
-    // Any other pattern is ignored.
   }
 
   return result;

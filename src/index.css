@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-shell text-slate-100 antialiased;
+@layer base {
+  body {
+    /* global black + red-ish text theme */
+    @apply bg-black text-gray-100 antialiased;
+  }
 }
+
+/* (Optional) if you added any other custom classes that use @apply bg-appBlack,
+   change them to bg-black or bg-neutral-900, etc. */
