@@ -13,11 +13,11 @@ const goals = [
   },
   {
     id: 2,
-    label: "Azera Loan",
-    code: "AZ",
-    planPerMonth: 380,
+    label: "Subaru Loan",
+    code: "SB",
+    planPerMonth: 400,
     current: 0,
-    target: 7692,
+    target: 16232.96,
   },
 ];
 
@@ -25,7 +25,7 @@ const goals = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [theme, setTheme] = useState("dark"); // keep option, but we style dark
+  const theme = "dark"; // hard-lock to dark theme
   const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState("all"); // "all" or "YYYY-MM"
 
@@ -114,14 +114,20 @@ export default function App() {
   const headerClass =
     "border-b sticky top-0 z-50 backdrop-blur bg-[#050505cc] border-red-900";
 
-  const navActive =
-    "px-4 py-1 rounded-full border transition border-red-500 bg-red-500/10 text-red-300";
+const navActive =
+  "px-4 py-1 rounded-full border border-red-500 bg-red-500/10 text-red-300 " +
+  "transition transform hover:-translate-y-0.5 hover:shadow-[0_0_18px_rgba(248,113,113,0.7)]";
 
-  const navInactive =
-    "px-4 py-1 rounded-full border transition border-gray-700 text-gray-300 hover:border-red-500 hover:text-red-300";
+const navInactive =
+  "px-4 py-1 rounded-full border border-gray-700 text-gray-300 " +
+  "transition transform hover:-translate-y-0.5 hover:border-red-500 hover:text-red-300 " +
+  "hover:shadow-[0_0_16px_rgba(248,113,113,0.5)]";
 
-  const cardClass =
-    "rounded-3xl p-6 border bg-[#080808] border-red-900 shadow-[0_0_40px_rgba(0,0,0,0.7)]";
+const cardClass =
+  "rounded-3xl p-6 border bg-[#080808] border-red-900 shadow-[0_0_40px_rgba(0,0,0,0.7)] " +
+  "transition-transform transition-shadow duration-200 " +
+  "hover:-translate-y-1 hover:border-red-500 hover:shadow-[0_0_40px_rgba(248,113,113,0.55)]";
+
 
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
@@ -143,28 +149,19 @@ export default function App() {
             </h1>
           </div>
 
-          <div className="flex items-center gap-4">
-            <nav className="flex gap-2 text-sm">
-              {tabs.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setActiveTab(t.id)}
-                  className={activeTab === t.id ? navActive : navInactive}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </nav>
-
-            <select
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              className="text-xs rounded-full border border-gray-700 bg-[#050505] text-gray-200 px-3 py-1 outline-none cursor-pointer"
-            >
-              <option value="dark">Dark</option>
-              <option value="sage">Sage (experimental)</option>
-            </select>
-          </div>
+<div className="flex items-center gap-4">
+  <nav className="flex gap-2 text-sm">
+    {tabs.map((t) => (
+      <button
+        key={t.id}
+        onClick={() => setActiveTab(t.id)}
+        className={activeTab === t.id ? navActive : navInactive}
+      >
+        {t.label}
+      </button>
+    ))}
+  </nav>
+</div>
         </div>
       </header>
 
@@ -391,25 +388,33 @@ function TransactionsPage({
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
-          <label className="inline-flex cursor-pointer flex-col gap-2">
-            <span className="inline-flex items-center justify-center rounded-full border px-4 py-1.5 border-red-500 bg-red-500/10 text-red-300 hover:bg-red-500 hover:text-black transition">
-              Choose CSV file
-            </span>
-            <input
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-            />
-          </label>
+<label className="inline-flex cursor-pointer flex-col gap-2">
+  <span
+    className={
+      "inline-flex items-center justify-center rounded-full border px-4 py-1.5 border-red-500 bg-red-500/10 text-red-300 " +
+      "transition transform hover:-translate-y-0.5 hover:bg-red-500 hover:text-black " +
+      "hover:shadow-[0_0_20px_rgba(248,113,113,0.7)]"
+    }
+  >
+    Choose CSV file
+  </span>
 
-          <button
-            type="button"
-            onClick={handleImport}
-            className="rounded-full border px-4 py-1.5 text-xs transition border-red-500 text-red-300 hover:bg-red-500 hover:text-black"
-          >
-            Import CSV
-          </button>
+  <input
+    type="file"
+    accept=".csv"
+    className="hidden"
+    onChange={(e) => setFile(e.target.files?.[0] || null)}
+  />
+</label>
+
+
+<button
+  type="button"
+  onClick={handleImport}
+  className="rounded-full border px-4 py-1.5 text-xs border-red-500 text-red-300 transition transform hover:-translate-y-0.5 hover:bg-red-500 hover:text-black hover:shadow-[0_0_20px_rgba(248,113,113,0.7)]"
+>
+  Import CSV
+</button>
 
           {file && (
             <span className="text-[0.7rem] text-gray-400">
@@ -442,39 +447,39 @@ function TransactionsPage({
                 </th>
               </tr>
             </thead>
-            <tbody>
-              {transactions.map((t) => (
-                <tr
-                  key={t.id}
-                  onClick={() => setEditing(t)}
-                  className="cursor-pointer border-b border-gray-800 hover:bg-[#111111]"
-                >
-                  <td className="px-4 py-2 text-gray-200">{t.date}</td>
-                  <td className="px-4 py-2 text-gray-100">
-                    {t.description}
-                  </td>
-<td
-  className={
-    "px-4 py-2 " +
-    (t.type === "income"
-      ? "text-green-400"
-      : t.type === "payment"
-      ? "text-yellow-400"
-      : "text-red-500")
-  }
->
-                    {t.type === "income"
-                      ? "Income"
-                      : t.type === "payment"
-                      ? "Payment"
-                      : "Expense"}
-                  </td>
-                  <td className="px-4 py-2 text-gray-100">
-                    ${t.amount.toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+<tbody>
+  {transactions.map((t) => (
+    <tr
+      key={t.id}
+      onClick={() => setEditing(t)}
+      className="cursor-pointer border-b border-gray-800 transition-colors transform hover:bg-[#111111] hover:translate-x-1"
+    >
+      <td className="px-4 py-2 text-gray-200">{t.date}</td>
+      <td className="px-4 py-2 text-gray-100">{t.description}</td>
+
+      <td
+        className={
+          "px-4 py-2 " +
+          (t.type === "income"
+            ? "text-green-400"
+            : t.type === "payment"
+            ? "text-yellow-400"
+            : "text-red-500")
+        }
+      >
+        {t.type === "income"
+          ? "Income"
+          : t.type === "payment"
+          ? "Payment"
+          : "Expense"}
+      </td>
+
+      <td className="px-4 py-2 text-gray-100">
+        ${t.amount.toFixed(2)}
+      </td>
+    </tr>
+  ))}
+</tbody>
           </table>
         </div>
       </section>
@@ -785,12 +790,14 @@ function GoalCard({ goal, theme }) {
   const p = Math.min(100, Math.round((goal.current / goal.target) * 100));
 
   return (
-    <div
-      className={
-        "rounded-2xl p-4 border flex flex-col gap-3 " +
-        (isDark ? "bg-[#050505] border-red-900" : "bg-slate-100")
-      }
-    >
+<div
+  className={
+    "rounded-2xl p-4 border flex flex-col gap-3 transition-transform transition-shadow duration-200 " +
+    (isDark
+      ? "bg-[#050505] border-red-900 hover:border-red-500 hover:shadow-[0_0_30px_rgba(248,113,113,0.4)] hover:-translate-y-1"
+      : "bg-slate-100")
+  }
+>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold bg-red-500/15 text-red-300">
