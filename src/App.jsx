@@ -1,5 +1,4 @@
-import { useState } from "react";
-
+import { useState, useEffect } from "react";
 import Papa from "papaparse";
 import { parseBankCsv } from "./utils/parseBankCsv";
 
@@ -54,6 +53,19 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [theme, setTheme] = useState("dark"); // "dark" | "sage"
   const [transactions, setTransactions] = useState(initialTransactions);
+
+  // Load saved transactions from localStorage on first load
+useEffect(() => {
+  const saved = localStorage.getItem("transactions");
+  if (saved) {
+    setTransactions(JSON.parse(saved));
+  }
+}, []);
+
+// Save transactions into localStorage whenever they change
+useEffect(() => {
+  localStorage.setItem("transactions", JSON.stringify(transactions));
+}, [transactions]);
   // Derived totals from imported transactions
   const incomeFromCsv = transactions
     .filter((t) => t.type === "income")
@@ -170,9 +182,9 @@ export default function App() {
   onAddTransactions={(newItems) =>
     setTransactions((prev) => [...prev, ...newItems])
   }
-  onUpdateTransaction={(updatedTx) =>
+  onUpdateTransaction={(updated) =>
     setTransactions((prev) =>
-      prev.map((t) => (t.id === updatedTx.id ? updatedTx : t))
+      prev.map((t) => (t.id === updated.id ? updated : t))
     )
   }
 />
@@ -307,16 +319,19 @@ function BudgetPage({ cardClass, monthSummary }) {
   );
 }
 
-/* ---------- Transactions tab with CSV import ---------- */
+/* ---------- Transactions tab with CSV import + modal editing ---------- */
 
 function TransactionsPage({
   theme,
   cardClass,
   transactions,
   onAddTransactions,
+  onUpdateTransaction,
 }) {
   const isDark = theme === "dark";
+
   const [file, setFile] = useState(null);
+  const [editing, setEditing] = useState(null); // <-- REQUIRED
 
   const handleImport = () => {
     if (!file) {
@@ -343,7 +358,7 @@ function TransactionsPage({
       <div className="space-y-2">
         <h2 className="text-3xl font-bold">Transactions</h2>
         <p className="text-neutralSoft text-sm">
-          Upload a bank CSV or add transactions manually later.
+          Upload a bank CSV or click a row to edit it.
         </p>
       </div>
 
@@ -352,15 +367,6 @@ function TransactionsPage({
         <h3 className="text-xs font-semibold tracking-[0.28em] text-neutralSoft">
           BANK STATEMENT IMPORT (CSV)
         </h3>
-
-        <p className="mt-3 text-xs text-neutralSoft">
-          Supported formats:
-          <br />
-          1) <strong>Type, Description, Amount, Date</strong>
-          <br />
-          2) <strong>Date, Description, Amount</strong> (Amount &gt; 0 =
-          income, Amount &lt; 0 = expense)
-        </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
           <label className="inline-flex cursor-pointer flex-col gap-2">
@@ -405,18 +411,14 @@ function TransactionsPage({
 
       {/* Transactions table */}
       <section className={cardClass}>
-        <h3 className="mb-3 text-sm font-medium">
-          Imported + sample transactions
-        </h3>
+        <h3 className="mb-3 text-sm font-medium">Imported + sample transactions</h3>
 
         <div className="overflow-x-auto rounded-2xl border border-slate-700/40">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr
                 className={
-                  isDark
-                    ? "bg-shell text-slate-200"
-                    : "bg-sageBg text-sageText"
+                  isDark ? "bg-shell text-slate-200" : "bg-sageBg text-sageText"
                 }
               >
                 <th className="px-4 py-3 text-left border-b border-slate-700/60 font-semibold">
@@ -433,72 +435,135 @@ function TransactionsPage({
                 </th>
               </tr>
             </thead>
+
             <tbody>
               {transactions.map((t) => (
                 <tr
                   key={t.id}
+                  onClick={() => setEditing(t)}
                   className={
-                    "border-b " +
+                    "cursor-pointer border-b " +
                     (isDark
                       ? "border-slate-700/50 hover:bg-slate-800/40"
                       : "border-sageBorder hover:bg-sageBg")
                   }
                 >
-<td className="px-4 py-2">
-  <input
-    type="date"
-    value={t.date}
-    onChange={(e) =>
-      onUpdateTransaction({ ...t, date: e.target.value })
-    }
-    className="bg-transparent outline-none"
-  />
-</td>
+                  <td className={isDark ? "px-4 py-2 text-slate-200" : "px-4 py-2"}>
+                    {t.date}
+                  </td>
 
-<td className="px-4 py-2">
-  <input
-    type="text"
-    value={t.description}
-    onChange={(e) =>
-      onUpdateTransaction({ ...t, description: e.target.value })
-    }
-    className="bg-transparent outline-none w-full"
-  />
-</td>
+                  <td className={isDark ? "px-4 py-2 text-slate-100" : "px-4 py-2"}>
+                    {t.description}
+                  </td>
 
-<td className="px-4 py-2">
-  <select
-    value={t.type}
-    onChange={(e) =>
-      onUpdateTransaction({ ...t, type: e.target.value })
-    }
-    className="bg-transparent outline-none"
-  >
-    <option value="income">Income</option>
-    <option value="expense">Expense</option>
-  </select>
-</td>
+                  <td
+                    className={
+                      "px-4 py-2 " +
+                      (t.type === "income" ? "text-emerald-400" : "text-rose-400")
+                    }
+                  >
+                    {t.type === "income" ? "Income" : "Expense"}
+                  </td>
 
-<td className="px-4 py-2">
-  <input
-    type="number"
-    value={t.amount}
-    onChange={(e) =>
-      onUpdateTransaction({
-        ...t,
-        amount: parseFloat(e.target.value) || 0,
-      })
-    }
-    className="bg-transparent outline-none w-24"
-  />
-</td>
-
+                  <td className={isDark ? "px-4 py-2 text-slate-100" : "px-4 py-2"}>
+                    ${t.amount.toFixed(2)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
+
+      {/* ---------- EDIT MODAL ---------- */}
+      {editing && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 w-full max-w-md shadow-xl space-y-4">
+
+            <h3 className="text-xl font-semibold mb-2">Edit Transaction</h3>
+
+            {/* Description */}
+            <div className="space-y-1">
+              <label className="text-sm">Description</label>
+              <input
+                type="text"
+                className="w-full p-2 rounded bg-slate-200 dark:bg-slate-700"
+                value={editing.description}
+                onChange={(e) =>
+                  setEditing({ ...editing, description: e.target.value })
+                }
+              />
+            </div>
+
+            {/* Date */}
+            <div className="space-y-1">
+              <label className="text-sm">Date</label>
+              <input
+                type="text"
+                className="w-full p-2 rounded bg-slate-200 dark:bg-slate-700"
+                value={editing.date}
+                onChange={(e) =>
+                  setEditing({ ...editing, date: e.target.value })
+                }
+              />
+            </div>
+
+            {/* Type */}
+            <div className="space-y-1">
+              <label className="text-sm">Type</label>
+              <select
+                className="w-full p-2 rounded bg-slate-200 dark:bg-slate-700"
+                value={editing.type}
+                onChange={(e) =>
+                  setEditing({ ...editing, type: e.target.value })
+                }
+              >
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
+              </select>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-1">
+              <label className="text-sm">Amount</label>
+              <input
+                type="number"
+                className="w-full p-2 rounded bg-slate-200 dark:bg-slate-700"
+                value={editing.amount}
+                onChange={(e) =>
+                  setEditing({
+                    ...editing,
+                    amount: parseFloat(e.target.value) || 0,
+                  })
+                }
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                className="px-4 py-2 rounded bg-gray-300 dark:bg-slate-600"
+                onClick={() => setEditing(null)}
+              >
+                Cancel
+              </button>
+
+              <button
+                className="px-4 py-2 rounded bg-emerald-500 text-white"
+                onClick={() => {
+                  onUpdateTransaction(editing);
+                  setEditing(null);
+                }}
+              >
+                Save
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+      {/* ---------- END MODAL ---------- */}
+
     </div>
   );
 }
