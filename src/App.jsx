@@ -8,7 +8,7 @@ const goals = [
     label: "Japan Trip",
     code: "JP",
     planPerMonth: 270,
-    current: 500,
+    current: 3500,
     target: 5000,
   },
   {
@@ -256,26 +256,26 @@ function DashboardPage({
         </h3>
 
         <div className="grid gap-6 md:grid-cols-4">
-          <OverviewStat
-            label="INCOME"
-            value={monthSummary.income}
-            color={isDark ? "text-red-300" : "text-red-600"}
-          />
-          <OverviewStat
-            label="EXPENSES"
-            value={monthSummary.expenses}
-            color={isDark ? "text-red-400" : "text-red-700"}
-          />
-          <OverviewStat
-            label="PAYMENTS"
-            value={monthSummary.payments}
-            color="text-red-500"
-          />
-          <OverviewStat
-            label="LEFTOVER"
-            value={monthSummary.leftover}
-            color={isDark ? "text-red-200" : "text-red-500"}
-          />
+<OverviewStat
+  label="INCOME"
+  value={monthSummary.income}
+  color="text-green-400"
+/>
+<OverviewStat
+  label="EXPENSES"
+  value={monthSummary.expenses}
+  color="text-red-500"
+/>
+<OverviewStat
+  label="PAYMENTS"
+  value={monthSummary.payments}
+  color="text-yellow-400"
+/>
+<OverviewStat
+  label="LEFTOVER"
+  value={monthSummary.leftover}
+  color="text-white"
+/>
         </div>
 
         <div className="mt-6 space-y-2">
@@ -453,16 +453,16 @@ function TransactionsPage({
                   <td className="px-4 py-2 text-gray-100">
                     {t.description}
                   </td>
-                  <td
-                    className={
-                      "px-4 py-2 " +
-                      (t.type === "income"
-                        ? "text-red-200"
-                        : t.type === "payment"
-                        ? "text-red-300"
-                        : "text-red-400")
-                    }
-                  >
+<td
+  className={
+    "px-4 py-2 " +
+    (t.type === "income"
+      ? "text-green-400"
+      : t.type === "payment"
+      ? "text-yellow-400"
+      : "text-red-500")
+  }
+>
                     {t.type === "income"
                       ? "Income"
                       : t.type === "payment"
@@ -591,29 +591,30 @@ function CashFlowSankey({ theme, income }) {
 
   if (!income || income <= 0) return null;
 
-  const flows = [
-    {
-      id: "savings",
-      label: "Savings",
-      share: 0.33,
-      colorDark: "#fecaca", // light red
-      colorLight: "#f87171",
-    },
-    {
-      id: "fixed",
-      label: "Fixed",
-      share: 0.38,
-      colorDark: "#ef4444",
-      colorLight: "#b91c1c",
-    },
-    {
-      id: "disc",
-      label: "Discretionary",
-      share: 0.29,
-      colorDark: "#7f1d1d",
-      colorLight: "#450a0a",
-    },
-  ];
+const flows = [
+  {
+    id: "savings",
+    label: "Savings",
+    share: 0.33,
+    colorDark: "#4ade80", // green-400
+    colorLight: "#4ade80",
+  },
+  {
+    id: "fixed",
+    label: "Fixed",
+    share: 0.38,
+    colorDark: "#ef4444", // red-500
+    colorLight: "#ef4444",
+  },
+  {
+    id: "disc",
+    label: "Discretionary",
+    share: 0.29,
+    colorDark: "#facc15", // yellow-400
+    colorLight: "#facc15",
+  },
+];
+
 
   const slices = flows.map((f) => ({
     ...f,
@@ -808,10 +809,13 @@ function GoalCard({ goal, theme }) {
       </div>
 
       <div className="h-2 w-full overflow-hidden rounded-full bg-black">
-        <div
-          className="h-full transition-all duration-700 bg-gradient-to-r from-red-800 via-red-500 to-red-400"
-          style={{ width: `${p}%` }}
-        />
+<div
+  className={
+    "h-full transition-all duration-700 " +
+    (p >= 80 ? "bg-green-400" : "bg-red-500")
+  }
+  style={{ width: `${p}%` }}
+/>
       </div>
     </div>
   );
