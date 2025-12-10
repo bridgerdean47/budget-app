@@ -1,5 +1,8 @@
 import { useState } from "react";
 
+import Papa from "papaparse";
+import { parseBankCsv } from "./utils/parseBankCsv";
+
 /* ---------- Demo data ---------- */
 
 const goals = [
@@ -504,55 +507,67 @@ function GoalsPage({ cardClass }) {
 function CashFlowSankey({ theme, income }) {
   const isDark = theme === "dark";
 
-  // If no income yet (before CSV import), hide the chart
+  // Hide card if no income yet
   if (!income || income <= 0) return null;
 
-  // Define how income is split – you can adjust these percentages later,
-  // or eventually drive them from categorized transactions.
+  // Split income – adjust shares later if you want
   const flows = [
     { id: "savings", label: "Savings", share: 0.33, colorDark: "#22c55e", colorLight: "#15803d" },
     { id: "fixed", label: "Fixed", share: 0.38, colorDark: "#fb7185", colorLight: "#b91c1c" },
     { id: "disc", label: "Discretionary", share: 0.29, colorDark: "#eab308", colorLight: "#a16207" },
   ];
 
-  const totalIncome = income;
-  const nodes = flows.map((f) => ({
+  const slices = flows.map((f) => ({
     ...f,
-    value: totalIncome * f.share,
+    value: income * f.share,
   }));
 
-  const height = 260;
-  const width = 820;
-  const frameRadius = 26;
+  const total = slices.reduce((s, x) => s + x.value, 0);
 
-  const padding = 24;
-  const innerWidth = width - padding * 2;
-  const innerHeight = height - padding * 2;
+  // Helper to build a donut arc path
+  const makeArcPath = (cx, cy, rOuter, rInner, startAngle, endAngle) => {
+    const toRad = (deg) => ((deg - 90) * Math.PI) / 180;
 
-  const leftX = padding + 40;
-  const midX = padding + innerWidth * 0.55;
-  const labelX = midX + 60;
+    const sOuter = toRad(startAngle);
+    const eOuter = toRad(endAngle);
+    const sInner = eOuter;
+    const eInner = sOuter;
 
-  // Layout vertical positions for nodes on both left bar and mid column
-  const gap = 10;
-  const totalValue = nodes.reduce((s, n) => s + n.value, 0);
-  const usableHeight = innerHeight - gap * (nodes.length - 1);
-  let offsetY = padding;
+    const x1Outer = cx + rOuter * Math.cos(sOuter);
+    const y1Outer = cy + rOuter * Math.sin(sOuter);
+    const x2Outer = cx + rOuter * Math.cos(eOuter);
+    const y2Outer = cy + rOuter * Math.sin(eOuter);
 
-  const positions = nodes.map((node) => {
-    const h = (node.value / totalValue) * usableHeight;
-    const yTop = offsetY;
-    const yBottom = offsetY + h;
-    const yCenter = yTop + h / 2;
-    offsetY += h + gap;
+    const x1Inner = cx + rInner * Math.cos(sInner);
+    const y1Inner = cy + rInner * Math.sin(sInner);
+    const x2Inner = cx + rInner * Math.cos(eInner);
+    const y2Inner = cy + rInner * Math.sin(eInner);
 
-    return { ...node, h, yTop, yBottom, yCenter };
+    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+    return [
+      `M ${x1Outer} ${y1Outer}`,
+      `A ${rOuter} ${rOuter} 0 ${largeArcFlag} 1 ${x2Outer} ${y2Outer}`,
+      `L ${x1Inner} ${y1Inner}`,
+      `A ${rInner} ${rInner} 0 ${largeArcFlag} 0 ${x2Inner} ${y2Inner}`,
+      "Z",
+    ].join(" ");
+  };
+
+  // Compute angles for each slice
+  let currentAngle = 0;
+  const withAngles = slices.map((s) => {
+    const sliceAngle = total > 0 ? (s.value / total) * 360 : 0;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + sliceAngle;
+    currentAngle = endAngle;
+    return { ...s, startAngle, endAngle };
   });
 
-  const incomeBarTop = positions[0].yTop;
-  const incomeBarBottom = positions[positions.length - 1].yBottom;
-  const incomeBarHeight = incomeBarBottom - incomeBarTop;
-  const incomeBarY = incomeBarTop;
+  const cx = 90;
+  const cy = 90;
+  const outerRadius = 70;
+  const innerRadius = 45;
 
   return (
     <section className="mt-2 rounded-3xl border border-slate-800 bg-card/80 p-4">
@@ -560,132 +575,100 @@ function CashFlowSankey({ theme, income }) {
         CASH FLOW
       </h3>
 
-      <div className="overflow-hidden rounded-[26px] bg-black/20">
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-64"
-          role="img"
-        >
-          {/* Rounded background */}
-          <rect
-            x="0"
-            y="0"
-            width={width}
-            height={height}
-            rx={frameRadius}
-            fill={isDark ? "#020617" : "#f4f3ec"}
-          />
+      <div
+        className={
+          "rounded-2xl px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-6 " +
+          (isDark ? "bg-[#020617]" : "bg-sageCard")
+        }
+      >
+        {/* Left: donut chart */}
+        <div className="flex justify-center items-center">
+          <svg width="180" height="180" viewBox="0 0 180 180">
+            {/* Background ring */}
+            <circle
+              cx={cx}
+              cy={cy}
+              r={outerRadius}
+              fill={isDark ? "#020617" : "#e7ebdd"}
+            />
 
-          {/* Inner panel to focus the flows */}
-          <rect
-            x={padding + 40}
-            y={padding}
-            width={innerWidth - 80}
-            height={innerHeight}
-            rx={22}
-            fill={isDark ? "#020617" : "#e7ebdd"}
-          />
-
-          {/* Income bar */}
-          <rect
-            x={leftX - 14}
-            y={incomeBarY}
-            width={28}
-            height={incomeBarHeight}
-            rx={14}
-            fill={isDark ? "#06b6d4" : "#0f766e"}
-          />
-
-          {/* Income label */}
-          <text
-            x={leftX - 32}
-            y={incomeBarY + incomeBarHeight / 2 - 4}
-            textAnchor="end"
-            fontSize="12"
-            fill={isDark ? "#e5e7eb" : "#111827"}
-          >
-            Income
-          </text>
-          <text
-            x={leftX - 32}
-            y={incomeBarY + incomeBarHeight / 2 + 11}
-            textAnchor="end"
-            fontSize="11"
-            fill={isDark ? "#9ca3af" : "#4b5563"}
-          >
-            ${totalIncome.toLocaleString()}
-          </text>
-
-          {/* Smooth, non-crossing ribbons */}
-          {positions.map((node) => {
-            const startCenter = (node.yTop + node.yBottom) / 2; // same segment on income bar
-            const endCenter = node.yCenter;
-            const thickness = (node.value / totalIncome) * incomeBarHeight * 0.75;
-
-            const color = isDark ? node.colorDark : node.colorLight;
-
-            const d = `
-              M ${leftX + 14} ${startCenter}
-              C ${leftX + 80} ${startCenter},
-                ${midX - 80} ${endCenter},
-                ${midX - 24} ${endCenter}
-            `;
-
-            return (
-              <path
-                key={node.id}
-                d={d}
-                fill="none"
-                stroke={color}
-                strokeWidth={thickness}
-                strokeOpacity={0.35}
-                strokeLinecap="round"
-              />
-            );
-          })}
-
-          {/* Middle nodes + labels */}
-          {positions.map((node) => {
-            const barHeight = node.h * 0.55;
-            const barY = node.yCenter - barHeight / 2;
-            const color = isDark ? node.colorDark : node.colorLight;
-            const pct = Math.round((node.value / totalIncome) * 100);
-
-            return (
-              <g key={node.id}>
-                <rect
-                  x={midX - 16}
-                  y={barY}
-                  width={32}
-                  height={barHeight}
-                  rx={16}
+            {withAngles.map((slice) => {
+              const color = isDark ? slice.colorDark : slice.colorLight;
+              const d = makeArcPath(
+                cx,
+                cy,
+                outerRadius,
+                innerRadius,
+                slice.startAngle,
+                slice.endAngle
+              );
+              return (
+                <path
+                  key={slice.id}
+                  d={d}
                   fill={color}
                   fillOpacity={0.9}
+                  stroke={isDark ? "#020617" : "#e7ebdd"}
+                  strokeWidth={1}
                 />
-                <text
-                  x={labelX}
-                  y={node.yCenter - 4}
-                  fontSize="12"
-                  fill={isDark ? "#e5e7eb" : "#111827"}
-                >
-                  {node.label}
-                </text>
-                <text
-                  x={labelX}
-                  y={node.yCenter + 11}
-                  fontSize="11"
-                  fill={isDark ? "#9ca3af" : "#4b5563"}
-                >
-                  ${node.value.toLocaleString()} · {pct}%
-                </text>
-              </g>
+              );
+            })}
+
+            {/* Center label */}
+            <circle cx={cx} cy={cy} r={innerRadius - 6} fill={isDark ? "#020617" : "#f4f3ec"} />
+            <text
+              x={cx}
+              y={cy - 6}
+              textAnchor="middle"
+              className="text-xs"
+              fill={isDark ? "#e5e7eb" : "#111827"}
+            >
+              Income
+            </text>
+            <text
+              x={cx}
+              y={cy + 12}
+              textAnchor="middle"
+              className="text-sm font-semibold"
+              fill={isDark ? "#e5e7eb" : "#111827"}
+            >
+              ${income.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </text>
+          </svg>
+        </div>
+
+        {/* Right: legend */}
+        <div className="flex-1 space-y-3">
+          {withAngles.map((slice) => {
+            const pct = total > 0 ? Math.round((slice.value / total) * 100) : 0;
+            const color = isDark ? slice.colorDark : slice.colorLight;
+            return (
+              <div
+                key={slice.id}
+                className="flex items-center justify-between text-xs sm:text-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-3 w-3 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="font-medium">{slice.label}</span>
+                </div>
+                <div className="text-right text-neutralSoft">
+                  <span className="mr-2">
+                    ${slice.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                  <span>{pct}%</span>
+                </div>
+              </div>
             );
           })}
-        </svg>
+        </div>
       </div>
     </section>
   );
 }
+
 
 
 /* ---------- Shared components ---------- */
@@ -851,6 +834,23 @@ function parseCsv(text, startId = 0) {
     };
   }
 
+  // Bank format #3: Chase credit card CSV
+  // Headers: Transaction Date, Post Date, Description, Category, Type, Amount, Memo
+  const hasChaseHeader =
+    headerLower.includes("transaction date") &&
+    headerLower.includes("description") &&
+    headerLower.includes("amount");
+
+  let chase = null;
+  if (hasChaseHeader) {
+    chase = {
+      dateIdx: headerLower.indexOf("transaction date"),
+      descIdx: headerLower.indexOf("description"),
+      amountIdx: headerLower.indexOf("amount"),
+      typeIdx: headerLower.indexOf("type"), // may be -1 if not present
+    };
+  }
+
   // Generic headers for simple formats
   const hasSimpleHeader =
     headerLower.includes("type") &&
@@ -865,6 +865,7 @@ function parseCsv(text, startId = 0) {
   if (
     hasBank1Header ||
     hasBank2Header ||
+    hasChaseHeader ||
     hasSimpleHeader ||
     hasDateDescAmountHeader
   ) {
@@ -959,6 +960,60 @@ function parseCsv(text, startId = 0) {
         });
       }
       continue; // handled as bank2
+    }
+
+        /* ===== Bank format #3: Chase credit card CSV ===== */
+    if (chase) {
+      const { dateIdx, descIdx, amountIdx, typeIdx } = chase;
+
+      if (
+        dateIdx < cols.length &&
+        descIdx < cols.length &&
+        amountIdx < cols.length
+      ) {
+        const dateRaw = cols[dateIdx];
+        const descRaw = cols[descIdx];
+        const amountRaw = cols[amountIdx];
+        const typeRaw =
+          typeIdx >= 0 && typeIdx < cols.length ? cols[typeIdx] : "";
+
+        // parse amount (e.g. "-59.95")
+        let amount = parseFloat(amountRaw.replace(/,/g, ""));
+        if (!Number.isFinite(amount)) {
+          continue;
+        }
+
+        // convert MM/DD/YYYY -> YYYY-MM-DD
+        let date = dateRaw;
+        const m = dateRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m) {
+          const mm = m[1].padStart(2, "0");
+          const dd = m[2].padStart(2, "0");
+          date = `${m[3]}-${mm}-${dd}`;
+        }
+
+        // Determine income vs expense
+        const tLower = typeRaw.toLowerCase();
+        let type = "expense";
+        if (
+          amount > 0 ||
+          tLower.includes("payment") ||
+          tLower.includes("refund") ||
+          tLower.includes("credit")
+        ) {
+          type = "income";
+        }
+
+        result.push({
+          id: idCounter++,
+          date,
+          description: descRaw,
+          type,
+          amount: Math.abs(amount),
+        });
+      }
+
+      continue; // this row handled by Chase parser
     }
 
     /* ===== Simple format A: Type, Description, Amount, Date ===== */
