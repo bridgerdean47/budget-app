@@ -758,30 +758,221 @@ function GoalCard({ goal, theme }) {
   );
 }
 
-/* ---------- CSV helper ---------- */
+// --- CSV helpers ----------------------------------------------------
+
+function splitCsvLine(line) {
+  // Split a CSV line while respecting quotes
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+
+    if (c === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        // Escaped quote
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (c === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+function isIsoDate(str) {
+  // YYYY-MM-DD
+  return /^\d{4}-\d{2}-\d{2}$/.test(str);
+}
 
 function parseCsv(text, startId = 0) {
   const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
-  if (lines.length <= 1) return [];
+  if (lines.length === 0) return [];
 
   const result = [];
   let idCounter = startId + 1;
 
-  for (let i = 1; i < lines.length; i++) {
+  // ----- Inspect header -----------------------------------------------------------------
+  let startIndex = 0;
+  let headerCols = [];
+  let headerLower = [];
+
+  if (lines.length > 0) {
+    headerCols = splitCsvLine(lines[0]).map((c) =>
+      c.trim().replace(/^"|"$/g, "")
+    );
+    headerLower = headerCols.map((c) => c.toLowerCase());
+  }
+
+  // Bank format #1: ExportedTransactions.csv
+  const hasBank1Header =
+    headerLower.includes("posting date") &&
+    headerLower.includes("transaction type") &&
+    headerLower.some((c) => c === "amount" || c.startsWith("amount"));
+
+  let bank1 = null;
+  if (hasBank1Header) {
+    bank1 = {
+      postingIdx: headerLower.indexOf("posting date"),
+      txnTypeIdx: headerLower.indexOf("transaction type"),
+      amountIdx: headerLower.findIndex((c) => c === "amount" || c.startsWith("amount")),
+      descIdx: (() => {
+        let idx = headerLower.findIndex((c) =>
+          c.includes("extended description")
+        );
+        if (idx === -1)
+          idx = headerLower.findIndex((c) => c === "description");
+        return idx;
+      })(),
+    };
+  }
+
+  // Bank format #2: Money Market Transactions.csv
+  const hasBank2Header =
+    headerLower.includes("account id") &&
+    headerLower.includes("transaction id") &&
+    headerLower.includes("date") &&
+    headerLower.some((c) => c === "amount" || c.startsWith("amount"));
+
+  let bank2 = null;
+  if (hasBank2Header) {
+    bank2 = {
+      dateIdx: headerLower.indexOf("date"),
+      descIdx: headerLower.indexOf("description"),
+      amountIdx: headerLower.findIndex((c) => c === "amount" || c.startsWith("amount")),
+    };
+  }
+
+  // Generic headers for simple formats
+  const hasSimpleHeader =
+    headerLower.includes("type") &&
+    headerLower.some((c) => c.startsWith("description")) &&
+    headerLower.some((c) => c.startsWith("amount")) &&
+    headerLower.some((c) => c.startsWith("date"));
+  const hasDateDescAmountHeader =
+    headerLower.includes("date") &&
+    headerLower.some((c) => c.startsWith("description")) &&
+    headerLower.some((c) => c.startsWith("amount"));
+
+  if (
+    hasBank1Header ||
+    hasBank2Header ||
+    hasSimpleHeader ||
+    hasDateDescAmountHeader
+  ) {
+    startIndex = 1; // skip header row
+  }
+
+  // ----- Parse data lines ----------------------------------------------------------------
+
+  for (let i = startIndex; i < lines.length; i++) {
     const raw = lines[i].trim();
     if (!raw) continue;
 
-    const cols = raw.split(",").map((c) => c.trim());
+    const cols = splitCsvLine(raw).map((c) =>
+      c.trim().replace(/^"|"$/g, "")
+    );
     if (cols.length < 3) continue;
 
-    // Format 1: Type, Description, Amount, Date
-    if (cols.length >= 4) {
-      const [typeRaw, desc, amountRaw, date] = cols;
-      const amount = parseFloat(amountRaw);
+    /* ===== Bank format #1: ExportedTransactions.csv ===== */
+    if (bank1) {
+      const { postingIdx, txnTypeIdx, amountIdx, descIdx } = bank1;
+      if (
+        postingIdx < cols.length &&
+        txnTypeIdx < cols.length &&
+        amountIdx < cols.length
+      ) {
+        const postingRaw = cols[postingIdx];
+        const txnTypeRaw = cols[txnTypeIdx];
+        const amountRaw = cols[amountIdx];
+        const descRaw = descIdx >= 0 && descIdx < cols.length ? cols[descIdx] : "";
+
+        let amount = parseFloat(amountRaw.replace(/,/g, ""));
+        if (!Number.isFinite(amount)) continue;
+
+        // convert MM/DD/YYYY -> YYYY-MM-DD
+        let date = postingRaw;
+        const m = postingRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m) {
+          const mm = m[1].padStart(2, "0");
+          const dd = m[2].padStart(2, "0");
+          date = `${m[3]}-${mm}-${dd}`;
+        }
+
+        const txnTypeLower = txnTypeRaw.toLowerCase();
+        const type =
+          txnTypeLower === "credit" || amount > 0 ? "income" : "expense";
+
+        result.push({
+          id: idCounter++,
+          date,
+          description: descRaw,
+          type,
+          amount: Math.abs(amount),
+        });
+      }
+      continue; // we handled this line
+    }
+
+    /* ===== Bank format #2: Money Market Transactions.csv ===== */
+    if (bank2) {
+      const { dateIdx, descIdx, amountIdx } = bank2;
+      if (
+        dateIdx < cols.length &&
+        amountIdx < cols.length &&
+        descIdx < cols.length
+      ) {
+        const dateRaw = cols[dateIdx];
+        const descRaw = cols[descIdx];
+        const amountCell = cols[amountIdx];
+
+        const negative = amountCell.includes("(");
+        const cleaned = amountCell.replace(/[\$,()]/g, "");
+        let amount = parseFloat(cleaned);
+        if (!Number.isFinite(amount)) continue;
+        if (negative) amount = -amount;
+
+        let date = dateRaw;
+        const m = dateRaw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m) {
+          const mm = m[1].padStart(2, "0");
+          const dd = m[2].padStart(2, "0");
+          date = `${m[3]}-${mm}-${dd}`;
+        }
+
+        const type = amount >= 0 ? "income" : "expense";
+
+        result.push({
+          id: idCounter++,
+          date,
+          description: descRaw,
+          type,
+          amount: Math.abs(amount),
+        });
+      }
+      continue; // handled as bank2
+    }
+
+    /* ===== Simple format A: Type, Description, Amount, Date ===== */
+    const firstLower = cols[0].toLowerCase();
+    if (
+      (firstLower === "income" || firstLower === "expense") &&
+      cols.length >= 4
+    ) {
+      const [typeRaw, desc, amountRaw, dateRaw] = cols;
+      let amount = parseFloat(amountRaw.replace(/,/g, ""));
       if (!Number.isFinite(amount)) continue;
 
-      const type =
-        typeRaw.toLowerCase() === "income" ? "income" : "expense";
+      const type = typeRaw.toLowerCase() === "income" ? "income" : "expense";
+      const date = dateRaw;
 
       result.push({
         id: idCounter++,
@@ -790,11 +981,45 @@ function parseCsv(text, startId = 0) {
         type,
         amount: Math.abs(amount),
       });
-    } else {
-      // Format 2: Date, Description, Amount
-      const [date, desc, amountRaw] = cols;
-      const amount = parseFloat(amountRaw);
+      continue;
+    }
+
+    /* ===== Simple format B: Date, Description, Amount (YYYY-MM-DD) ===== */
+    if (isIsoDate(cols[0])) {
+      const [dateRaw, desc, amountRaw] = cols;
+      let amount = parseFloat(amountRaw.replace(/,/g, ""));
       if (!Number.isFinite(amount)) continue;
+
+      const type = amount >= 0 ? "income" : "expense";
+      const date = dateRaw;
+
+      result.push({
+        id: idCounter++,
+        date,
+        description: desc,
+        type,
+        amount: Math.abs(amount),
+      });
+      continue;
+    }
+
+    /* ===== Fallback format C: Description, 20251130:xxxx, Amount ===== */
+    // Used for some older exports where 2nd col is YYYYMMDD:...
+    if (/^\d{8}:/.test(cols[1])) {
+      const desc = cols[0];
+      const code = cols[1];
+      const amountRaw = cols[2];
+
+      let amount = parseFloat(amountRaw.replace(/,/g, ""));
+      if (!Number.isFinite(amount)) continue;
+
+      const dateDigits = code.slice(0, 8); // YYYYMMDD
+      const date =
+        dateDigits.slice(0, 4) +
+        "-" +
+        dateDigits.slice(4, 6) +
+        "-" +
+        dateDigits.slice(6, 8);
 
       const type = amount >= 0 ? "income" : "expense";
 
@@ -805,7 +1030,10 @@ function parseCsv(text, startId = 0) {
         type,
         amount: Math.abs(amount),
       });
+      continue;
     }
+
+    // Any other pattern is ignored.
   }
 
   return result;
