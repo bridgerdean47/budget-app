@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 /* ---------- Demo Goals ---------- */
 
@@ -21,13 +21,62 @@ const goals = [
   },
 ];
 
+/* ---------- Budget helpers ---------- */
+
+const defaultBudget = {
+  monthLabel: "January 2026",
+  income: [
+    { id: 1, label: "Paycheck", amount: 3800 },
+    { id: 2, label: "Side Work", amount: 700 },
+  ],
+  fixed: [
+    { id: 3, label: "Rent", amount: 1400 },
+    { id: 4, label: "Utilities", amount: 250 },
+    { id: 5, label: "Car (Azera)", amount: 300 },
+    { id: 6, label: "Car (Rogue)", amount: 220 },
+    { id: 7, label: "Phone", amount: 90 },
+    { id: 8, label: "Subscriptions", amount: 70 },
+  ],
+  variable: [
+    { id: 9, label: "Groceries", amount: 400 },
+    { id: 10, label: "Gas", amount: 200 },
+    { id: 11, label: "Eating Out", amount: 150 },
+    { id: 12, label: "Fun Money", amount: 100 },
+  ],
+};
+
+function getBudgetTotals(budget) {
+  const sum = (arr) =>
+    (arr || []).reduce((s, item) => s + (Number(item.amount) || 0), 0);
+
+  const totalIncome = sum(budget.income);
+  const totalFixed = sum(budget.fixed);
+  const totalVariable = sum(budget.variable);
+  const remainingForGoals = totalIncome - totalFixed - totalVariable;
+
+  return { totalIncome, totalFixed, totalVariable, remainingForGoals };
+}
+
 /* ---------- Main App ---------- */
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const theme = "dark"; // hard-lock to dark theme
+  const [theme, setTheme] = useState("dark");
   const [transactions, setTransactions] = useState([]);
-  const [selectedMonth, setSelectedMonth] = useState("all"); // "all" or "YYYY-MM"
+  const [selectedMonth, setSelectedMonth] = useState("all");
+
+  // ---------- STEP 2: Budget state ----------
+  const [budget, setBudget] = useState(() => {
+    try {
+      const saved = localStorage.getItem("budget-v1");
+      return saved ? JSON.parse(saved) : defaultBudget;
+    } catch {
+      return defaultBudget;
+    }
+  });
+
+  const budgetTotals = getBudgetTotals(budget);
+
 
   const isDark = theme === "dark";
 
@@ -53,6 +102,15 @@ export default function App() {
       console.error("Error saving transactions", err);
     }
   }, [transactions]);
+  // ---------- STEP 2: Save budget ----------
+useEffect(() => {
+  try {
+    localStorage.setItem("budget-v1", JSON.stringify(budget));
+  } catch (err) {
+    console.error("Error saving budget", err);
+  }
+}, [budget]);
+
 
   /* ---------- Month filtering + summary ---------- */
 
@@ -168,19 +226,25 @@ const cardClass =
       {/* MAIN CONTENT */}
       <main className="max-w-6xl mx-auto px-6 py-10">
         {activeTab === "dashboard" && (
-          <DashboardPage
-            theme={theme}
-            cardClass={cardClass}
-            monthSummary={monthSummary}
-            selectedMonth={selectedMonth}
-            onMonthChange={setSelectedMonth}
-          />
-        )}
+  <DashboardPage
+    theme={theme}
+    cardClass={cardClass}
+    monthSummary={monthSummary}
+    selectedMonth={selectedMonth}
+    onMonthChange={setSelectedMonth}
+    budgetTotals={budgetTotals}   // ★ Added
+  />
+)}
 
-        {activeTab === "budget" && (
-          <BudgetPage cardClass={cardClass} monthSummary={monthSummary} />
-        )}
-
+{activeTab === "budget" && (
+  <BudgetPage
+    cardClass={cardClass}
+    monthSummary={monthSummary}
+    budget={budget}            // ★ Added
+    setBudget={setBudget}      // ★ Added
+    budgetTotals={budgetTotals} // ★ Added
+  />
+)}
         {activeTab === "transactions" && (
           <TransactionsPage
             theme={theme}
@@ -211,6 +275,7 @@ function DashboardPage({
   monthSummary,
   selectedMonth,
   onMonthChange,
+  budgetTotals,
 }) {
   const isDark = theme === "dark";
 
@@ -253,6 +318,14 @@ function DashboardPage({
         </h3>
 
         <div className="grid gap-6 md:grid-cols-4">
+                {budgetTotals && (
+          <p className="mt-4 text-xs text-gray-400">
+            Budget remaining for goals:{" "}
+            <span className="text-white">
+              ${budgetTotals.remainingForGoals.toFixed(2)}
+            </span>
+          </p>
+        )}
 <OverviewStat
   label="INCOME"
   value={monthSummary.income}
@@ -308,30 +381,275 @@ function DashboardPage({
 
 /* ---------- Budget ---------- */
 
-function BudgetPage({ cardClass, monthSummary }) {
-  const { income, expenses, payments, leftover } = monthSummary;
+function BudgetPage({ cardClass, monthSummary, budget, setBudget, budgetTotals }) {
+  const handleAddItem = (listKey) => {
+    setBudget((prev) => {
+      const nextId = Date.now();
+      const nextList = [
+        ...(prev[listKey] || []),
+        { id: nextId, label: "New item", amount: 0 },
+      ];
+      return { ...prev, [listKey]: nextList };
+    });
+  };
+
+  const handleUpdateItem = (listKey, id, field, value) => {
+    setBudget((prev) => {
+      const updated = (prev[listKey] || []).map((item) =>
+        item.id === id ? { ...item, [field]: value } : item
+      );
+      return { ...prev, [listKey]: updated };
+    });
+  };
+
+  const handleDeleteItem = (listKey, id) => {
+    setBudget((prev) => {
+      const filtered = (prev[listKey] || []).filter((item) => item.id !== id);
+      return { ...prev, [listKey]: filtered };
+    });
+  };
+
+  const monthLabel = budget.monthLabel || monthSummary.monthLabel;
+  const { totalIncome, totalFixed, totalVariable, remainingForGoals } =
+    budgetTotals || { totalIncome: 0, totalFixed: 0, totalVariable: 0, remainingForGoals: 0 };
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-3xl font-bold text-gray-100">Budget</h2>
-      <p className="text-gray-400 text-sm">
-        High-level breakdown of this month&apos;s plan.
-      </p>
+    <div className="space-y-6">
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-100">
+            {monthLabel} Budget
+          </h2>
+          <p className="text-gray-400 text-sm">
+            Income → Expenses → Goals
+          </p>
+        </div>
+      </header>
 
-      <section className={cardClass}>
-        <h3 className="text-sm font-medium mb-3 text-red-300">Totals</h3>
-        <ul className="space-y-1 text-sm text-gray-200">
-          <li>Income: ${income.toFixed(2)}</li>
-          <li>Expenses: ${expenses.toFixed(2)}</li>
-          <li>Payments: ${payments.toFixed(2)}</li>
-          <li>Leftover: ${leftover.toFixed(2)}</li>
-        </ul>
-      </section>
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Income */}
+        <section className={cardClass}>
+          <h3 className="text-xs font-semibold tracking-[0.28em] text-gray-400 mb-4">
+            INCOME
+          </h3>
+
+          <div className="space-y-2 text-sm">
+            {(budget.income || []).map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-3 text-gray-100"
+              >
+                <input
+                  className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none text-sm flex-1"
+                  value={item.label}
+                  onChange={(e) =>
+                    handleUpdateItem("income", item.id, "label", e.target.value)
+                  }
+                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none text-right w-24 text-sm"
+                    value={item.amount}
+                    onChange={(e) =>
+                      handleUpdateItem(
+                        "income",
+                        item.id,
+                        "amount",
+                        Number(e.target.value) || 0
+                      )
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="text-xs text-gray-500 hover:text-red-400"
+                    onClick={() => handleDeleteItem("income", item.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span className="text-gray-400 uppercase tracking-[0.16em]">
+              TOTAL
+            </span>
+            <span className="text-green-400 font-semibold">
+              ${totalIncome.toFixed(2)}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleAddItem("income")}
+            className="mt-4 inline-flex items-center justify-center px-4 py-1.5 rounded-full border border-green-500 text-xs text-green-300 
+                       hover:bg-green-500 hover:text-black transition"
+          >
+            + Add Income Item
+          </button>
+        </section>
+
+        {/* Fixed expenses */}
+        <section className={cardClass}>
+          <h3 className="text-xs font-semibold tracking-[0.28em] text-gray-400 mb-4">
+            FIXED EXPENSES
+          </h3>
+
+          <div className="space-y-2 text-sm">
+            {(budget.fixed || []).map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-3 text-gray-100"
+              >
+                <input
+                  className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none text-sm flex-1"
+                  value={item.label}
+                  onChange={(e) =>
+                    handleUpdateItem("fixed", item.id, "label", e.target.value)
+                  }
+                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none text-right w-24 text-sm"
+                    value={item.amount}
+                    onChange={(e) =>
+                      handleUpdateItem(
+                        "fixed",
+                        item.id,
+                        "amount",
+                        Number(e.target.value) || 0
+                      )
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="text-xs text-gray-500 hover:text-red-400"
+                    onClick={() => handleDeleteItem("fixed", item.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span className="text-gray-400 uppercase tracking-[0.16em]">
+              TOTAL
+            </span>
+            <span className="text-red-500 font-semibold">
+              ${totalFixed.toFixed(2)}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleAddItem("fixed")}
+            className="mt-4 inline-flex items-center justify-center px-4 py-1.5 rounded-full border border-red-500 text-xs text-red-300 
+                       hover:bg-red-500 hover:text-black transition"
+          >
+            + Add Fixed Expense
+          </button>
+        </section>
+
+        {/* Variable spending */}
+        <section className={cardClass}>
+          <h3 className="text-xs font-semibold tracking-[0.28em] text-gray-400 mb-4">
+            VARIABLE SPENDING
+          </h3>
+
+          <div className="space-y-2 text-sm">
+            {(budget.variable || []).map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-3 text-gray-100"
+              >
+                <input
+                  className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none text-sm flex-1"
+                  value={item.label}
+                  onChange={(e) =>
+                    handleUpdateItem(
+                      "variable",
+                      item.id,
+                      "label",
+                      e.target.value
+                    )
+                  }
+                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none text-right w-24 text-sm"
+                    value={item.amount}
+                    onChange={(e) =>
+                      handleUpdateItem(
+                        "variable",
+                        item.id,
+                        "amount",
+                        Number(e.target.value) || 0
+                      )
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="text-xs text-gray-500 hover:text-red-400"
+                    onClick={() => handleDeleteItem("variable", item.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span className="text-gray-400 uppercase tracking-[0.16em]">
+              TOTAL
+            </span>
+            <span className="text-yellow-400 font-semibold">
+              ${totalVariable.toFixed(2)}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleAddItem("variable")}
+            className="mt-4 inline-flex items-center justify-center px-4 py-1.5 rounded-full border border-yellow-400 text-xs text-yellow-300 
+                       hover:bg-yellow-400 hover:text-black transition"
+          >
+            + Add Variable Expense
+          </button>
+        </section>
+
+        {/* Remaining for goals */}
+        <section className={cardClass}>
+          <h3 className="text-xs font-semibold tracking-[0.28em] text-gray-400 mb-4">
+            REMAINING FOR GOALS
+          </h3>
+
+          <p className="text-3xl font-bold text-white mb-2">
+            ${remainingForGoals.toFixed(2)}
+          </p>
+          <p className="text-sm text-gray-400 mb-4">
+            This is what&apos;s left after income minus all listed expenses.
+          </p>
+
+          <button
+            type="button"
+            className="inline-flex items-center justify-center px-4 py-2 rounded-full border border-cyan-500 text-xs text-cyan-300 
+                       cursor-not-allowed opacity-60"
+          >
+            Edit Budget (coming soon)
+          </button>
+        </section>
+      </div>
     </div>
   );
 }
 
-/* ---------- Transactions + modal editing ---------- */
 
 function TransactionsPage({
   theme,
@@ -342,10 +660,12 @@ function TransactionsPage({
 }) {
   const [file, setFile] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
 
   const handleImport = () => {
     if (!file) {
-      alert("Choose a CSV file first.");
+      alert("Choose or drop a CSV file first.");
       return;
     }
 
@@ -363,6 +683,34 @@ function TransactionsPage({
     reader.readAsText(file);
   };
 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (!droppedFile) return;
+
+    if (!droppedFile.name.toLowerCase().endsWith(".csv")) {
+      alert("Please drop a .csv file.");
+      return;
+    }
+
+    setFile(droppedFile);
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -372,6 +720,7 @@ function TransactionsPage({
         </p>
       </div>
 
+      {/* IMPORT CARD */}
       <section className={cardClass}>
         <h3 className="text-xs font-semibold tracking-[0.28em] text-red-400">
           BANK STATEMENT IMPORT (CSV)
@@ -387,43 +736,58 @@ function TransactionsPage({
           3) Chase credit card CSV
         </p>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
-<label className="inline-flex cursor-pointer flex-col gap-2">
-  <span
-    className={
-      "inline-flex items-center justify-center rounded-full border px-4 py-1.5 border-red-500 bg-red-500/10 text-red-300 " +
-      "transition transform hover:-translate-y-0.5 hover:bg-red-500 hover:text-black " +
-      "hover:shadow-[0_0_20px_rgba(248,113,113,0.7)]"
-    }
-  >
-    Choose CSV file
-  </span>
+        <div className="mt-4 space-y-3 text-xs">
+          {/* Drag & drop zone */}
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={
+              "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-6 cursor-pointer transition " +
+              (isDragging
+                ? "border-red-400 bg-red-500/10"
+                : "border-red-700 bg-black/40 hover:border-red-500 hover:bg-red-500/5")
+            }
+          >
+            <p className="text-gray-200 font-medium mb-1">
+              Drag &amp; drop a CSV file here
+            </p>
+            <p className="text-gray-400">
+              or <span className="text-red-300 underline">click to browse</span>
+            </p>
 
-  <input
-    type="file"
-    accept=".csv"
-    className="hidden"
-    onChange={(e) => setFile(e.target.files?.[0] || null)}
-  />
-</label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+          </div>
 
+          {/* Import button + file name */}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleImport}
+              className="rounded-full border px-4 py-1.5 text-xs border-red-500 text-red-300 
+                         transition transform hover:-translate-y-0.5 hover:bg-red-500 hover:text-black 
+                         hover:shadow-[0_0_20px_rgba(248,113,113,0.7)]"
+            >
+              Import CSV
+            </button>
 
-<button
-  type="button"
-  onClick={handleImport}
-  className="rounded-full border px-4 py-1.5 text-xs border-red-500 text-red-300 transition transform hover:-translate-y-0.5 hover:bg-red-500 hover:text-black hover:shadow-[0_0_20px_rgba(248,113,113,0.7)]"
->
-  Import CSV
-</button>
-
-          {file && (
-            <span className="text-[0.7rem] text-gray-400">
-              Selected: {file.name}
-            </span>
-          )}
+            {file && (
+              <span className="text-[0.7rem] text-gray-400">
+                Selected: {file.name}
+              </span>
+            )}
+          </div>
         </div>
       </section>
 
+      {/* TABLE CARD */}
       <section className={cardClass}>
         <h3 className="mb-3 text-sm font-medium text-red-300">
           Imported transactions ({transactions.length})
@@ -433,58 +797,52 @@ function TransactionsPage({
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-[#111111] text-gray-200 border-b border-red-900">
-                <th className="px-4 py-3 text-left font-semibold">
-                  Date
-                </th>
+                <th className="px-4 py-3 text-left font-semibold">Date</th>
                 <th className="px-4 py-3 text-left font-semibold">
                   Description
                 </th>
-                <th className="px-4 py-3 text-left font-semibold">
-                  Type
-                </th>
-                <th className="px-4 py-3 text-left font-semibold">
-                  Amount
-                </th>
+                <th className="px-4 py-3 text-left font-semibold">Type</th>
+                <th className="px-4 py-3 text-left font-semibold">Amount</th>
               </tr>
             </thead>
-<tbody>
-  {transactions.map((t) => (
-    <tr
-      key={t.id}
-      onClick={() => setEditing(t)}
-      className="cursor-pointer border-b border-gray-800 transition-colors transform hover:bg-[#111111] hover:translate-x-1"
-    >
-      <td className="px-4 py-2 text-gray-200">{t.date}</td>
-      <td className="px-4 py-2 text-gray-100">{t.description}</td>
-
-      <td
-        className={
-          "px-4 py-2 " +
-          (t.type === "income"
-            ? "text-green-400"
-            : t.type === "payment"
-            ? "text-yellow-400"
-            : "text-red-500")
-        }
-      >
-        {t.type === "income"
-          ? "Income"
-          : t.type === "payment"
-          ? "Payment"
-          : "Expense"}
-      </td>
-
-      <td className="px-4 py-2 text-gray-100">
-        ${t.amount.toFixed(2)}
-      </td>
-    </tr>
-  ))}
-</tbody>
+            <tbody>
+              {transactions.map((t) => (
+                <tr
+                  key={t.id}
+                  onClick={() => setEditing(t)}
+                  className="cursor-pointer border-b border-gray-800 transition-colors transform hover:bg-[#111111] hover:translate-x-1"
+                >
+                  <td className="px-4 py-2 text-gray-200">{t.date}</td>
+                  <td className="px-4 py-2 text-gray-100">
+                    {t.description}
+                  </td>
+                  <td
+                    className={
+                      "px-4 py-2 " +
+                      (t.type === "income"
+                        ? "text-green-400"
+                        : t.type === "payment"
+                        ? "text-yellow-400"
+                        : "text-red-500")
+                    }
+                  >
+                    {t.type === "income"
+                      ? "Income"
+                      : t.type === "payment"
+                      ? "Payment"
+                      : "Expense"}
+                  </td>
+                  <td className="px-4 py-2 text-gray-100">
+                    ${t.amount.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       </section>
 
-      {/* Modal editor */}
+      {/* MODAL EDITOR */}
       {editing && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
           <div className="bg-[#101010] rounded-xl p-6 w-full max-w-md shadow-xl space-y-4 border border-red-700">
@@ -570,6 +928,7 @@ function TransactionsPage({
   );
 }
 
+
 /* ---------- Goals tab ---------- */
 
 function GoalsPage({ cardClass }) {
@@ -591,35 +950,37 @@ function GoalsPage({ cardClass }) {
 
 /* ---------- Cash-flow Sankey ---------- */
 
+/* ---------- Cash-flow Sankey ---------- */
+
 function CashFlowSankey({ theme, income }) {
   const isDark = theme === "dark";
 
+  // If no income, don't render the chart
   if (!income || income <= 0) return null;
 
-const flows = [
-  {
-    id: "savings",
-    label: "Savings",
-    share: 0.33,
-    colorDark: "#4ade80", // green-400
-    colorLight: "#4ade80",
-  },
-  {
-    id: "fixed",
-    label: "Fixed",
-    share: 0.38,
-    colorDark: "#ef4444", // red-500
-    colorLight: "#ef4444",
-  },
-  {
-    id: "disc",
-    label: "Discretionary",
-    share: 0.29,
-    colorDark: "#facc15", // yellow-400
-    colorLight: "#facc15",
-  },
-];
-
+  const flows = [
+    {
+      id: "savings",
+      label: "Savings",
+      share: 0.33,
+      colorDark: "#4ade80", // green-400
+      colorLight: "#4ade80",
+    },
+    {
+      id: "fixed",
+      label: "Fixed",
+      share: 0.38,
+      colorDark: "#ef4444", // red-500
+      colorLight: "#ef4444",
+    },
+    {
+      id: "disc",
+      label: "Discretionary",
+      share: 0.29,
+      colorDark: "#facc15", // yellow-400
+      colorLight: "#facc15",
+    },
+  ];
 
   const slices = flows.map((f) => ({
     ...f,
@@ -769,7 +1130,6 @@ const flows = [
     </section>
   );
 }
-
 /* ---------- Shared components ---------- */
 
 function OverviewStat({ label, value, color }) {
