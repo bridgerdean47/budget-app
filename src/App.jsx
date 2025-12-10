@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
+const TRANSACTIONS_KEY = "bm-transactions-v1";
+
 /* ---------- Demo Goals ---------- */
 
 const goals = [
@@ -82,26 +84,35 @@ export default function App() {
 
   /* ---------- LocalStorage ---------- */
 
-  // Load once
+  // Load transactions once on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("transactions");
+      const saved = localStorage.getItem(TRANSACTIONS_KEY);
       if (saved) {
-        setTransactions(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setTransactions(parsed);
+        } else {
+          console.warn("Saved transactions is not an array, clearing it.");
+          localStorage.removeItem(TRANSACTIONS_KEY);
+        }
       }
     } catch (err) {
       console.error("Error reading saved transactions", err);
+      // if it's corrupted JSON, clear it so it doesn't break future loads
+      localStorage.removeItem(TRANSACTIONS_KEY);
     }
   }, []);
 
-  // Save on change
+  // Save transactions whenever they change (including CSV import)
   useEffect(() => {
     try {
-      localStorage.setItem("transactions", JSON.stringify(transactions));
+      localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
     } catch (err) {
       console.error("Error saving transactions", err);
     }
   }, [transactions]);
+
   // ---------- STEP 2: Save budget ----------
 useEffect(() => {
   try {
