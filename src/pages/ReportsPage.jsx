@@ -14,11 +14,28 @@ function formatCurrency(value) {
     maximumFractionDigits: 2,
   });
 }
+function CustomTooltip({ active, payload }) {
+  if (!active || !payload || !payload.length) return null;
+
+  const { name, value, payload: row } = payload[0];
+
+  return (
+    <div className="rounded-md border border-red-500 bg-black/90 px-3 py-2 text-xs text-gray-100 shadow-lg">
+      <div className="font-semibold">{name}</div>
+      <div>
+        {formatCurrency(value)}{" "}
+        {row && typeof row.pct === "number"
+          ? `(${row.pct.toFixed(1)}%)`
+          : null}
+      </div>
+    </div>
+  );
+}
 
 export default function ReportsPage({ cardClass, transactions }) {
   // Use only expenses + payments for "where money is going"
   const expenseTx = (transactions || []).filter(
-    (t) => t.type === "expense" || t.type === "payment"
+    (t) => t.type === "expense"
   );
 
   const totalsByCategory = new Map();
@@ -122,14 +139,11 @@ export default function ReportsPage({ cardClass, transactions }) {
                       />
                     ))}
                   </Pie>
-                  <Tooltip
-                    formatter={(value) => formatCurrency(value)}
-                    contentStyle={{
-                      backgroundColor: "#050505",
-                      border: "1px solid #374151",
-                      color: "#e5e7eb",
-                    }}
-                  />
+<Tooltip
+  content={<CustomTooltip />}
+  wrapperStyle={{ pointerEvents: "none" }}
+/>
+
                 </PieChart>
               </ResponsiveContainer>
 

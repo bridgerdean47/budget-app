@@ -110,33 +110,29 @@ export default function DashboardPage({
       </div>
 
       {/* MONTH OVERVIEW + CASH FLOW */}
-      <section className={cardClass}>
-        <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-red-400">
-          MONTH OVERVIEW
-        </h3>
+<section className={cardClass}>
+  <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-red-400">
+    MONTH OVERVIEW
+  </h3>
 
-        <div className="grid gap-6 md:grid-cols-4">
-          <OverviewStat
-            label="INCOME"
-            value={monthSummary.income}
-            color="text-green-400"
-          />
-          <OverviewStat
-            label="EXPENSES"
-            value={monthSummary.expenses}
-            color="text-red-500"
-          />
-          <OverviewStat
-            label="PAYMENTS"
-            value={monthSummary.payments}
-            color="text-yellow-400"
-          />
-          <OverviewStat
-            label="LEFTOVER"
-            value={monthSummary.leftover}
-            color="text-white"
-          />
-        </div>
+  {/* now only 3 columns: Income, Expenses, Payments */}
+  <div className="grid gap-6 md:grid-cols-3">
+    <OverviewStat
+      label="INCOME"
+      value={monthSummary.income}
+      color="text-green-400"
+    />
+    <OverviewStat
+      label="EXPENSES"
+      value={monthSummary.expenses}
+      color="text-red-500"
+    />
+    <OverviewStat
+      label="PAYMENTS"
+      value={monthSummary.payments}
+      color="text-yellow-400"
+    />
+  </div>
 
         {budgetTotals && (
           <p className="mt-4 text-xs text-gray-400">

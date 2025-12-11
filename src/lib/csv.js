@@ -253,24 +253,41 @@ export function parseCsv(text, startId = 0) {
     }
 
     /* ---------- Generic: Date, Description, Amount ---------- */
-    if (isDateDescAmount) {
-      const dateStr = cells[0]?.trim() || "";
-      const desc = cells[1]?.trim() || "";
-      const rawAmount = parseAmount(cells[2] || "");
-      if (!isFinite(rawAmount) || rawAmount === 0) continue;
+if (isDateDescAmount) {
+  const dateStr = cells[0]?.trim() || "";
+  const desc = cells[1]?.trim() || "";
+  const amountStr = (cells[2] || "").replace(/,/g, "");
+  const rawAmount = parseFloat(amountStr);
+  if (!isFinite(rawAmount) || rawAmount === 0) continue;
 
-      const type = rawAmount > 0 ? "income" : "expense";
+  const d = desc.toLowerCase();
 
-      out.push({
-        id: startId + out.length,
-        date: normalizeDate(dateStr),
-        description: desc,
-        amount: Math.abs(rawAmount),
-        type,
-        category: "Uncategorized",
-      });
-      continue;
-    }
+  let type;
+
+  // Treat credit-card payments as "payment" instead of "expense"
+  if (
+    d.includes("chase credit crd") ||
+    d.includes("credit card payment") ||
+    d.includes("cc payment") ||
+    d.includes("epay") // your FCU EPAY lines
+  ) {
+    type = "payment";
+  } else {
+    // normal rule: positive = income, negative = expense
+    type = rawAmount > 0 ? "income" : "expense";
+  }
+
+  out.push({
+    id: startId + out.length,
+    date: normalizeDate(dateStr),
+    description: desc,
+    amount: Math.abs(rawAmount),
+    type,
+    category: "Uncategorized",
+  });
+  continue;
+}
+
 
     // fallback: skip unknown formats
   }

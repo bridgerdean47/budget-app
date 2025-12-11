@@ -1,65 +1,124 @@
 import { useState, useMemo, useRef } from "react";
 import { parseCsv } from "../lib/csv";
 
-/* ---------- Category helpers ---------- */
-
+/* -------------------------------------------------
+   CATEGORY OPTIONS
+-------------------------------------------------- */
 const CATEGORY_OPTIONS = [
   "Uncategorized",
-  "Automotive",
+  "Rent",
+  "Credit Card Payments",
+  "Loans",
+  "Insurance",
+  "Groceries",
+  "Food & Drink",
+  "Shopping",
   "Bills & Utilities",
   "Entertainment",
-  "Food & Drink",
   "Gas",
-  "Groceries",
+  "Automotive",
   "Health & Wellness",
-  "Personal",
-  "Shopping",
+  "Pets",
   "Travel",
+  "Personal",
+  "Cable/Satellite Services",
+  "Everything Else",
 ];
 
+/* -------------------------------------------------
+   MERCHANT CATEGORY OVERRIDES
+-------------------------------------------------- */
+const MERCHANT_CATEGORY_RULES = [
+  { match: "apts anderson", category: "Rent" },
+  { match: "apts ander", category: "Rent" },
+  { match: "quantum fiber", category: "Bills & Utilities" }, // internet
+  { match: "dept education", category: "Loans" },            // student loans
+  { match: "chase credit crd", category: "Credit Card Payments" },
+];
 
-function guessCategoryFromDescription(desc = "") {
+/* -------------------------------------------------
+   CATEGORY GUESSER
+-------------------------------------------------- */
+function guessCategory(desc = "") {
   const d = desc.toLowerCase();
 
+  // Strong rent overrides first
+  if (
+    d.includes("apts anderson") ||
+    d.includes("apts ander") ||
+    d.includes("apartment") ||
+    d.includes(" rent") ||
+    d.startsWith("rent") ||
+    d.includes("lease")
+  ) {
+    return "Rent";
+  }
+
+  // Merchant rules
+  for (const rule of MERCHANT_CATEGORY_RULES) {
+    if (d.includes(rule.match)) return rule.category;
+  }
+
+  // Groceries
   if (d.includes("walmart") || d.includes("grocery") || d.includes("winco"))
     return "Groceries";
+
+  // Restaurants / fast food
   if (
     d.includes("mcdonald") ||
     d.includes("taco bell") ||
     d.includes("burger king") ||
+    d.includes("wendy") ||
+    d.includes("subway") ||
     d.includes("restaurant") ||
     d.includes("cafe")
   )
-    return "Restaurants";
-  if (d.includes("shell") || d.includes("chevron") || d.includes("gas"))
+    return "Food & Drink";
+
+  // Gas
+  if (d.includes("shell") || d.includes("chevron") || d.includes("gas "))
     return "Gas";
-  if (d.includes("rent") || d.includes("apartment")) return "Rent";
+
+  // Utilities
   if (
     d.includes("power") ||
     d.includes("electric") ||
     d.includes("water") ||
     d.includes("gas & electric")
   )
-    return "Utilities";
+    return "Bills & Utilities";
+
+  // Subscriptions / streaming
   if (
     d.includes("spotify") ||
     d.includes("netflix") ||
     d.includes("hulu") ||
     d.includes("youtube")
   )
-    return "Subscriptions";
-  if (d.includes("loan") || d.includes("payment")) return "Debt Payments";
+    return "Entertainment";
+
+  // Loans / debt
+  if (d.includes("loan")) return "Loans";
+
+  // Travel
   if (d.includes("flight") || d.includes("hotel") || d.includes("airbnb"))
     return "Travel";
+
+  // Pets
   if (d.includes("pet") || d.includes("vet")) return "Pets";
-  if (d.includes("insurance")) return "Insurance";
+
+  // Safe Insurance detection
+  if (d.includes("insurance") || /\binsurance\b/.test(d)) return "Insurance";
+
+  // Shopping
   if (d.includes("amazon") || d.includes("target")) return "Shopping";
 
-  return null; // unknown → will become "Uncategorized"
+  return null;
 }
 
-/* ---------- Component ---------- */
-
+/* -------------------------------------------------
+   COMPONENT
+-------------------------------------------------- */
 export default function TransactionsPage({
   theme,
   cardClass,
@@ -78,6 +137,9 @@ export default function TransactionsPage({
   });
   const fileInputRef = useRef(null);
 
+  /* -----------------------------------------------
+     CSV IMPORT
+  -------------------------------------------------- */
   const handleFileSelected = (file) => {
     if (!file) return;
 
@@ -89,18 +151,43 @@ export default function TransactionsPage({
     setImportMessage(`Reading ${file.name}...`);
 
     const reader = new FileReader();
+
     reader.onload = (e) => {
       const text = e.target.result;
       const parsedRaw = parseCsv(text, transactions.length);
 
-      // Ensure every imported transaction has a category
-      const parsed = parsedRaw.map((tx) => ({
-        ...tx,
-        category:
-          tx.category ||
-          guessCategoryFromDescription(tx.description) ||
-          "Uncategorized",
-      }));
+      const parsed = parsedRaw.map((tx) => {
+        const desc = (tx.description || "").toLowerCase();
+
+        // ----- TYPE FIX: mark certain expenses as payments -----
+        let type = tx.type || "expense";
+        if (type === "expense") {
+          if (
+            desc.includes("chase credit crd") ||
+            desc.includes("chase credit card") ||
+            desc.includes("payment thank you")
+          ) {
+            type = "payment";
+          }
+        }
+
+        // ----- CATEGORY LOGIC -----
+        let category = tx.category || "";
+        const guessed = guessCategory(tx.description);
+
+        // Force Rent when guessed as Rent
+        if (guessed === "Rent") {
+          category = "Rent";
+        } else if (!category || category.toLowerCase() === "uncategorized") {
+          category = guessed || "Uncategorized";
+        }
+
+        return {
+          ...tx,
+          type,
+          category,
+        };
+      });
 
       if (!parsed.length) {
         setImportMessage("No valid rows found in CSV.");
@@ -111,76 +198,73 @@ export default function TransactionsPage({
         );
       }
     };
+
     reader.onerror = () => {
       setImportMessage("Error reading file.");
     };
+
     reader.readAsText(file);
   };
 
+  /* -----------------------------------------------
+     DRAG/DROP
+  -------------------------------------------------- */
   const handleDragOver = (e) => {
     e.preventDefault();
-    e.stopPropagation();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDragLeave = () => {
     setIsDragging(false);
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    e.stopPropagation();
     setIsDragging(false);
-
     const droppedFile = e.dataTransfer.files?.[0];
-    if (!droppedFile) return;
-
-    handleFileSelected(droppedFile);
+    if (droppedFile) handleFileSelected(droppedFile);
   };
 
+  /* -----------------------------------------------
+     SORTING
+  -------------------------------------------------- */
   const handleSortClick = (key) => {
-    setSortConfig((prev) => {
-      if (prev.key === key) {
-        return {
-          key,
-          direction: prev.direction === "asc" ? "desc" : "asc",
-        };
-      }
-      return { key, direction: "asc" };
-    });
+    setSortConfig((prev) =>
+      prev.key === key
+        ? { key, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: "asc" }
+    );
   };
 
   const sortedTransactions = useMemo(() => {
     const data = [...transactions];
-    if (!sortConfig.key) return data;
 
     if (sortConfig.key === "date") {
       data.sort((a, b) => {
-        const da = a.date ? new Date(a.date) : new Date(0);
-        const db = b.date ? new Date(b.date) : new Date(0);
-        const cmp = da - db;
-        return sortConfig.direction === "asc" ? cmp : -cmp;
+        const da = new Date(a.date || 0);
+        const db = new Date(b.date || 0);
+        return sortConfig.direction === "asc" ? da - db : db - da;
       });
     }
 
     return data;
   }, [transactions, sortConfig]);
 
-  const renderSortIcon = (key) => {
-    if (sortConfig.key !== key) {
-      return <span className="text-[0.6rem] text-gray-500">⇅</span>;
-    }
-    return (
+  const renderSortIcon = (key) =>
+    sortConfig.key !== key ? (
+      <span className="text-[0.6rem] text-gray-500">⇅</span>
+    ) : (
       <span className="text-[0.6rem] text-gray-300">
         {sortConfig.direction === "asc" ? "▲" : "▼"}
       </span>
     );
-  };
 
+  /* -----------------------------------------------
+     RENDER
+  -------------------------------------------------- */
   return (
     <div className="space-y-6">
+      {/* HEADER */}
       <div className="space-y-2 flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold text-gray-100">Transactions</h2>
@@ -203,52 +287,39 @@ export default function TransactionsPage({
           BANK STATEMENT IMPORT (CSV)
         </h3>
 
-        <p className="mt-3 text-xs text-gray-400">
-          Supported formats:
-          <br />
-          1) Type, Description, Amount, Date
-          <br />
-          2) Date, Description, Amount
-          <br />
-          3) Chase credit card CSV
-        </p>
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={
+            "mt-4 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-6 cursor-pointer transition " +
+            (isDragging
+              ? "border-red-400 bg-red-500/10"
+              : "border-red-700 bg-black/40 hover:border-red-500 hover:bg-red-500/5")
+          }
+        >
+          <p className="text-gray-200 font-medium mb-1">
+            Drag &amp; drop a CSV file here
+          </p>
+          <p className="text-gray-400">
+            or <span className="text-red-300 underline">click to browse</span>
+          </p>
 
-        <div className="mt-4 space-y-3 text-xs">
-          {/* Drag & drop zone */}
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={
-              "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-6 cursor-pointer transition " +
-              (isDragging
-                ? "border-red-400 bg-red-500/10"
-                : "border-red-700 bg-black/40 hover:border-red-500 hover:bg-red-500/5")
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) =>
+              handleFileSelected(e.target.files?.[0] || null)
             }
-          >
-            <p className="text-gray-200 font-medium mb-1">
-              Drag &amp; drop a CSV file here
-            </p>
-            <p className="text-gray-400">
-              or <span className="text-red-300 underline">click to browse</span>
-            </p>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(e) =>
-                handleFileSelected(e.target.files?.[0] || null)
-              }
-            />
-          </div>
-
-          {importMessage && (
-            <p className="text-[0.7rem] text-gray-400">{importMessage}</p>
-          )}
+          />
         </div>
+
+        {importMessage && (
+          <p className="text-[0.7rem] text-gray-400 mt-2">{importMessage}</p>
+        )}
       </section>
 
       {/* TABLE CARD */}
@@ -445,12 +516,11 @@ export default function TransactionsPage({
               <button
                 className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-500"
                 onClick={() => {
-                  // Ensure saved transaction has a category
                   const toSave = {
                     ...editing,
                     category:
                       editing.category ||
-                      guessCategoryFromDescription(editing.description) ||
+                      guessCategory(editing.description) ||
                       "Uncategorized",
                   };
                   onUpdateTransaction(toSave);
