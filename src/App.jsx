@@ -341,15 +341,6 @@ function DashboardPage({
   onDeleteTransaction,
   onClearTransactions,
 }) {
-  const allocationPercent =
-    monthSummary.income > 0
-      ? ((monthSummary.expenses + monthSummary.payments) /
-          monthSummary.income) *
-        100
-      : 0;
-
-  const totalSpending = monthSummary.expenses + monthSummary.payments;
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
@@ -375,7 +366,7 @@ function DashboardPage({
         </div>
       </div>
 
-      {/* MONTH SUMMARY */}
+      {/* MONTH OVERVIEW + CASH FLOW BAR */}
       <section className={cardClass}>
         <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-red-400">
           MONTH OVERVIEW
@@ -413,26 +404,15 @@ function DashboardPage({
           </p>
         )}
 
-        <div className="mt-6 space-y-2">
-          <p className="text-xs text-gray-400 uppercase tracking-[0.16em]">
-            Allocation this month
-          </p>
-
-          <div className="h-2 w-full overflow-hidden rounded-full bg-black">
-            <div
-              className="h-full transition-all duration-700 bg-gradient-to-r from-red-700 via-red-500 to-red-600"
-              style={{ width: `${Math.min(100, allocationPercent)}%` }}
-            />
-          </div>
+        {/* Neon cash-flow bar INSTEAD of "Allocation this month" */}
+        <div className="mt-6">
+          <CashFlowBar
+            theme={theme}
+            income={monthSummary.income}
+            expenses={monthSummary.expenses} // only expenses, no payments
+          />
         </div>
       </section>
-
-      {/* CASH FLOW BAR */}
-      <CashFlowBar
-        theme={theme}
-        income={monthSummary.income}
-        spending={totalSpending}
-      />
 
       {/* GOALS */}
       <section>
@@ -1486,69 +1466,69 @@ function GoalsPage({ cardClass, goals, setGoals }) {
 
 /* ---------- Cash-flow Bar ---------- */
 
-function CashFlowBar({ theme, income, spending }) {
-  const [hoverSide, setHoverSide] = useState(null);
+function CashFlowBar({ theme, income, expenses }) {
+  const [hover, setHover] = useState(null); // "income" | "expenses" | null
 
-  if (!income && !spending) return null;
+  const total = income + expenses;
+  if (total <= 0) return null;
 
-  const total = income + spending;
-  const incomeShare = total > 0 ? income / total : 0.5;
-  const spendingShare = total > 0 ? spending / total : 0.5;
+  const expenseRatio = expenses / total;
+  const incomeRatio = income / total;
+  const net = income - expenses;
 
-  const net = income - spending;
-  const isDark = theme === "dark";
+  const netLabelColor = net >= 0 ? "text-green-400" : "text-red-400";
+
+  const tooltip =
+    hover === "expenses"
+      ? `Expenses: ${formatCurrency(expenses)}`
+      : hover === "income"
+      ? `Income: ${formatCurrency(income)}`
+      : "";
 
   return (
-    <section className="mt-2 rounded-3xl border border-red-900 bg-black p-4">
-      <h3 className="mb-3 text-xs font-semibold tracking-[0.28em] text-red-400">
-        CASH FLOW
-      </h3>
+    <div className="space-y-2">
+      {/* BAR */}
+      <div className="relative h-4 w-full rounded-full bg-black overflow-hidden border border-red-900">
+        {/* Red (expenses only) */}
+        <div
+          className="absolute left-0 top-0 h-full bg-gradient-to-r from-red-600 via-red-500 to-orange-400 shadow-[0_0_16px_rgba(248,113,113,0.9)]"
+          style={{ width: `${expenseRatio * 100}%` }}
+          onMouseEnter={() => setHover("expenses")}
+          onMouseLeave={() => setHover(null)}
+        />
 
-      <div className="space-y-3">
-        <div className="relative h-6 w-full rounded-full bg-[#020617] overflow-hidden">
-          {/* Left (spending) */}
-          <div
-            className="absolute inset-y-0 left-0 bg-red-600/80 cursor-pointer"
-            style={{ width: `${spendingShare * 100}%` }}
-            onMouseEnter={() => setHoverSide("spending")}
-            onMouseLeave={() => setHoverSide(null)}
-            title={`Spending: ${formatCurrency(spending)}`}
-          />
-          {/* Right (income) */}
-          <div
-            className="absolute inset-y-0 right-0 bg-green-500/80 cursor-pointer"
-            style={{ width: `${incomeShare * 100}%` }}
-            onMouseEnter={() => setHoverSide("income")}
-            onMouseLeave={() => setHoverSide(null)}
-            title={`Income: ${formatCurrency(income)}`}
-          />
-          {/* Center zero line */}
-          <div className="absolute inset-y-1 left-1/2 w-[2px] bg-gray-700/80" />
-        </div>
+        {/* Green (income) */}
+        <div
+          className="absolute top-0 h-full bg-gradient-to-r from-emerald-400 via-lime-300 to-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.9)]"
+          style={{
+            left: `${expenseRatio * 100}%`,
+            width: `${incomeRatio * 100}%`,
+          }}
+          onMouseEnter={() => setHover("income")}
+          onMouseLeave={() => setHover(null)}
+        />
 
-        <div className="flex items-center justify-between text-xs sm:text-sm text-gray-300">
-          <span>
-            {hoverSide === "income"
-              ? `Income this month: ${formatCurrency(income)}`
-              : hoverSide === "spending"
-              ? `Spending this month: ${formatCurrency(spending)}`
-              : `Hover green/red to see exact amounts.`}
-          </span>
-          <span
-            className={
-              "font-semibold " +
-              (net > 0
-                ? "text-emerald-400"
-                : net < 0
-                ? "text-red-400"
-                : "text-gray-200")
-            }
-          >
-            Net: {formatCurrency(net)}
-          </span>
-        </div>
+        {/* Center marker */}
+        <div className="absolute inset-y-0 left-1/2 w-px bg-gray-600/60 pointer-events-none" />
       </div>
-    </section>
+
+      {/* Tooltip on hover */}
+      {tooltip && (
+        <div className="text-xs text-gray-300">
+          {tooltip}
+        </div>
+      )}
+
+      {/* Labels */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-red-400">
+          Expenses: {formatCurrency(expenses)}
+        </span>
+        <span className={netLabelColor}>
+          Net: {formatCurrency(net)}
+        </span>
+      </div>
+    </div>
   );
 }
 
