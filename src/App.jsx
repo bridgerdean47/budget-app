@@ -268,7 +268,7 @@ useEffect(() => {
 
       {/* MAIN CONTENT */}
       <main className="max-w-6xl mx-auto px-6 py-10">
-        {activeTab === "dashboard" && (
+{activeTab === "dashboard" && (
   <DashboardPage
     theme={theme}
     cardClass={cardClass}
@@ -277,10 +277,14 @@ useEffect(() => {
     onMonthChange={setSelectedMonth}
     budgetTotals={budgetTotals}
     goals={goals}
-    transactions={transactions}                     // NEW
-    onAddTransactions={(newItems) =>               // NEW
+    transactions={transactions}
+    onAddTransactions={(newItems) =>
       setTransactions((prev) => [...prev, ...newItems])
     }
+    onDeleteTransaction={(id) =>
+      setTransactions((prev) => prev.filter((t) => t.id !== id))
+    }
+    onClearTransactions={() => setTransactions([])}
   />
 )}
 
@@ -294,21 +298,25 @@ useEffect(() => {
           />
         )}
 
-        {activeTab === "transactions" && (
-          <TransactionsPage
-            theme={theme}
-            cardClass={cardClass}
-            transactions={transactions}
-            onAddTransactions={(newItems) =>
-              setTransactions((prev) => [...prev, ...newItems])
-            }
-            onUpdateTransaction={(updated) =>
-              setTransactions((prev) =>
-                prev.map((t) => (t.id === updated.id ? updated : t))
-              )
-            }
-          />
-        )}
+{activeTab === "transactions" && (
+  <TransactionsPage
+    theme={theme}
+    cardClass={cardClass}
+    transactions={transactions}
+    onAddTransactions={(newItems) =>
+      setTransactions((prev) => [...prev, ...newItems])
+    }
+    onUpdateTransaction={(updated) =>
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === updated.id ? updated : t))
+      )
+    }
+    onDeleteTransaction={(id) =>
+      setTransactions((prev) => prev.filter((t) => t.id !== id))
+    }
+    onClearTransactions={() => setTransactions([])}
+  />
+)}
 
         {activeTab === "goals" && (
   <GoalsPage cardClass={cardClass} goals={goals} setGoals={setGoals} />
@@ -330,6 +338,8 @@ function DashboardPage({
   goals,
   transactions,
   onAddTransactions,
+  onDeleteTransaction,
+  onClearTransactions,
 }) {
   const allocationPercent =
     monthSummary.income > 0
@@ -442,12 +452,21 @@ function DashboardPage({
         cardClass={cardClass}
         transactions={transactions}
         onAddTransactions={onAddTransactions}
+        onDeleteTransaction={onDeleteTransaction}
+        onClearTransactions={onClearTransactions}
       />
     </div>
   );
 }
 
-function MiniTransactionsWidget({ cardClass, transactions, onAddTransactions }) {
+
+function MiniTransactionsWidget({
+  cardClass,
+  transactions,
+  onAddTransactions,
+  onDeleteTransaction,
+  onClearTransactions,
+}) {
   const [isDragging, setIsDragging] = useState(false);
   const [importMessage, setImportMessage] = useState("");
   const fileInputRef = useRef(null);
@@ -516,9 +535,18 @@ function MiniTransactionsWidget({ cardClass, transactions, onAddTransactions }) 
 
   return (
     <section className={cardClass}>
-      <h3 className="text-xs font-semibold tracking-[0.28em] text-red-400 mb-3">
-        QUICK IMPORT & RECENT TRANSACTIONS
-      </h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold tracking-[0.28em] text-red-400">
+          QUICK IMPORT & RECENT TRANSACTIONS
+        </h3>
+        <button
+          type="button"
+          onClick={onClearTransactions}
+          className="text-[0.7rem] px-3 py-1 rounded-full border border-gray-600 text-gray-300 hover:border-red-500 hover:text-red-300"
+        >
+          Clear All
+        </button>
+      </div>
 
       {/* Drag/drop area */}
       <div className="mb-4 text-xs">
@@ -568,6 +596,7 @@ function MiniTransactionsWidget({ cardClass, transactions, onAddTransactions }) 
               </th>
               <th className="px-3 py-2 text-left font-semibold">Type</th>
               <th className="px-3 py-2 text-right font-semibold">Amount</th>
+              <th className="px-3 py-2 text-center font-semibold">Del</th>
             </tr>
           </thead>
           <tbody>
@@ -605,12 +634,21 @@ function MiniTransactionsWidget({ cardClass, transactions, onAddTransactions }) 
                 <td className="px-3 py-2 text-right text-gray-100">
                   ${t.amount.toFixed(2)}
                 </td>
+                <td className="px-3 py-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => onDeleteTransaction(t.id)}
+                    className="text-xs text-gray-500 hover:text-red-400"
+                  >
+                    ×
+                  </button>
+                </td>
               </tr>
             ))}
             {sortedTransactions.length === 0 && (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={5}
                   className="px-3 py-4 text-center text-gray-500"
                 >
                   No transactions yet. Import a CSV to see them here.
@@ -623,6 +661,7 @@ function MiniTransactionsWidget({ cardClass, transactions, onAddTransactions }) 
     </section>
   );
 }
+
 
 /* ---------- Spending Estimate / Budget tab ---------- */
 
@@ -999,6 +1038,8 @@ function TransactionsPage({
   transactions,
   onAddTransactions,
   onUpdateTransaction,
+  onDeleteTransaction,
+  onClearTransactions,
 }) {
   const [editing, setEditing] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -1102,11 +1143,20 @@ function TransactionsPage({
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h2 className="text-3xl font-bold text-gray-100">Transactions</h2>
-        <p className="text-gray-400 text-sm">
-          Upload a bank CSV or click a row to edit it.
-        </p>
+      <div className="space-y-2 flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-100">Transactions</h2>
+          <p className="text-gray-400 text-sm">
+            Upload a bank CSV or click a row to edit it.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClearTransactions}
+          className="text-xs px-4 py-1.5 rounded-full border border-gray-600 text-gray-300 hover:border-red-500 hover:text-red-300"
+        >
+          Clear All
+        </button>
       </div>
 
       {/* IMPORT CARD */}
@@ -1188,6 +1238,7 @@ function TransactionsPage({
                 </th>
                 <th className="px-4 py-3 text-left font-semibold">Type</th>
                 <th className="px-4 py-3 text-left font-semibold">Amount</th>
+                <th className="px-4 py-3 text-center font-semibold">Del</th>
               </tr>
             </thead>
             <tbody>
@@ -1224,6 +1275,18 @@ function TransactionsPage({
                   <td className="px-4 py-2 text-gray-100">
                     ${t.amount.toFixed(2)}
                   </td>
+                  <td className="px-4 py-2 text-center">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteTransaction(t.id);
+                      }}
+                      className="text-xs text-gray-500 hover:text-red-400"
+                    >
+                      ×
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1231,7 +1294,7 @@ function TransactionsPage({
         </div>
       </section>
 
-      {/* MODAL EDITOR */}
+      {/* MODAL EDITOR (unchanged) */}
       {editing && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
           <div className="bg-[#101010] rounded-xl p-6 w-full max-w-md shadow-xl space-y-4 border border-red-700">
