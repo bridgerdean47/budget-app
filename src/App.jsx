@@ -1467,66 +1467,57 @@ function GoalsPage({ cardClass, goals, setGoals }) {
 /* ---------- Cash-flow Bar ---------- */
 
 function CashFlowBar({ theme, income, expenses }) {
-  const [hover, setHover] = useState(null); // "income" | "expenses" | null
-
   const total = income + expenses;
   if (total <= 0) return null;
 
-  const expenseRatio = expenses / total;
   const incomeRatio = income / total;
+  const expenseRatio = expenses / total;
   const net = income - expenses;
 
   const netLabelColor = net >= 0 ? "text-green-400" : "text-red-400";
 
-  const tooltip =
-    hover === "expenses"
-      ? `Expenses: ${formatCurrency(expenses)}`
-      : hover === "income"
-      ? `Income: ${formatCurrency(income)}`
-      : "";
-
   return (
     <div className="space-y-2">
+
       {/* BAR */}
       <div className="relative h-4 w-full rounded-full bg-black overflow-hidden border border-red-900">
-        {/* Red (expenses only) */}
+
+        {/* GREEN — Income (LEFT) */}
         <div
-          className="absolute left-0 top-0 h-full bg-gradient-to-r from-red-600 via-red-500 to-orange-400 shadow-[0_0_16px_rgba(248,113,113,0.9)]"
+          className="absolute left-0 top-0 h-full bg-gradient-to-r
+                     from-emerald-400 via-lime-300 to-emerald-300
+                     shadow-[0_0_18px_rgba(52,211,153,0.9)]"
+          style={{ width: `${incomeRatio * 100}%` }}
+        />
+
+        {/* RED — Expenses (RIGHT) */}
+        <div
+          className="absolute right-0 top-0 h-full bg-gradient-to-r
+                     from-orange-400 via-red-500 to-red-600
+                     shadow-[0_0_16px_rgba(248,113,113,0.9)]"
           style={{ width: `${expenseRatio * 100}%` }}
-          onMouseEnter={() => setHover("expenses")}
-          onMouseLeave={() => setHover(null)}
         />
 
-        {/* Green (income) */}
-        <div
-          className="absolute top-0 h-full bg-gradient-to-r from-emerald-400 via-lime-300 to-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.9)]"
-          style={{
-            left: `${expenseRatio * 100}%`,
-            width: `${incomeRatio * 100}%`,
-          }}
-          onMouseEnter={() => setHover("income")}
-          onMouseLeave={() => setHover(null)}
-        />
-
-        {/* Center marker */}
-        <div className="absolute inset-y-0 left-1/2 w-px bg-gray-600/60 pointer-events-none" />
       </div>
 
-      {/* Tooltip on hover */}
-      {tooltip && (
-        <div className="text-xs text-gray-300">
-          {tooltip}
-        </div>
-      )}
-
-      {/* Labels */}
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-red-400">
-          Expenses: {formatCurrency(expenses)}
+      {/* LABELS */}
+      <div className="flex items-center justify-between text-xs mt-1">
+        
+        {/* Income (left) */}
+        <span className="text-green-400">
+          Income: {formatCurrency(income)}
         </span>
+
+        {/* Net (center) */}
         <span className={netLabelColor}>
           Net: {formatCurrency(net)}
         </span>
+
+        {/* Expenses (right) */}
+        <span className="text-red-400">
+          Expenses: {formatCurrency(expenses)}
+        </span>
+
       </div>
     </div>
   );
