@@ -192,64 +192,87 @@ useEffect(() => {
   }
 }, [goals]);
 
-  /* ---------- Month filtering + summary ---------- */
+/* ---------- Month filtering + summary ---------- */
 
-  const filteredTransactions =
-    selectedMonth === "all"
-      ? transactions
-      : transactions.filter(
-          (t) => t.date && t.date.startsWith(selectedMonth)
-        );
+// Same helper as in DashboardPage – turn a date string into "YYYY-MM"
+function getMonthKeyFromDate(dateStr) {
+  if (!dateStr) return null;
 
-  const income = filteredTransactions
-    .filter((t) => t.type === "income")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const payments = filteredTransactions
-    .filter((t) => t.type === "payment")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const expenses = filteredTransactions
-    .filter((t) => t.type === "expense")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const transfers = filteredTransactions
-    .filter((t) => t.type === "transfer")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  // Transfers DO NOT affect leftover
-  const leftover = income - expenses - payments;
-
-  function formatMonthLabel(key) {
-    if (key === "all") return "All Months";
-    const [year, month] = key.split("-");
-    const names = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    const idx = parseInt(month, 10) - 1;
-    if (Number.isNaN(idx) || idx < 0 || idx > 11) return key;
-    return `${names[idx]} ${year}`;
+  // Already like "2025-12-11" or "2025-12"
+  if (/^\d{4}-\d{2}/.test(dateStr)) {
+    return dateStr.slice(0, 7); // "YYYY-MM"
   }
 
-  const monthSummary = {
-    monthLabel: formatMonthLabel(selectedMonth),
-    income,
-    expenses,
-    payments,
-    leftover,
-    transfers,
-  };
+  // Formats like "12/11/2025" or "12-11-25"
+  const m = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  if (m) {
+    let [_, mm, dd, yy] = m;
+    mm = mm.padStart(2, "0");
+    let year = yy.length === 2 ? `20${yy}` : yy;
+    return `${year}-${mm}`;
+  }
+
+  return null;
+}
+
+const filteredTransactions =
+  selectedMonth === "all"
+    ? transactions
+    : transactions.filter(
+        (t) => getMonthKeyFromDate(t.date) === selectedMonth
+      );
+
+// Totals for the selected month
+const income = filteredTransactions
+  .filter((t) => t.type === "income")
+  .reduce((sum, t) => sum + t.amount, 0);
+
+const payments = filteredTransactions
+  .filter((t) => t.type === "payment")
+  .reduce((sum, t) => sum + t.amount, 0);
+
+const expenses = filteredTransactions
+  .filter((t) => t.type === "expense")
+  .reduce((sum, t) => sum + t.amount, 0);
+
+const transfers = filteredTransactions
+  .filter((t) => t.type === "transfer")
+  .reduce((sum, t) => sum + t.amount, 0);
+
+// Transfers DO NOT affect leftover
+const leftover = income - expenses - payments;
+
+function formatMonthLabel(key) {
+  if (key === "all") return "All Months";
+  const [year, month] = key.split("-");
+  const names = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const idx = parseInt(month, 10) - 1;
+  if (Number.isNaN(idx) || idx < 0 || idx > 11) return key;
+  return `${names[idx]} ${year}`;
+}
+
+const monthSummary = {
+  monthLabel: formatMonthLabel(selectedMonth),
+  income,
+  expenses,
+  payments,
+  leftover,
+  transfers,
+};
+
 
   /* ---------- Styles (Black + Red theme) ---------- */
 

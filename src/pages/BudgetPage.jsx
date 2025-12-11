@@ -58,12 +58,13 @@ export default function BudgetPage({ cardClass, monthSummary, budget, setBudget,
     <div className="space-y-6">
       <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-3xl font-bold text-gray-100">
-            {monthLabel} Spending Estimate
-          </h2>
-          <p className="text-gray-400 text-sm">
-            Plan your income and bills, then compare to real spending.
-          </p>
+<h2 className="text-3xl font-bold text-gray-100">
+  Spending Estimate
+</h2>
+<p className="text-sm text-gray-400">
+  Plan your income and bills, then compare to real spending.
+</p>
+
         </div>
       </header>
 

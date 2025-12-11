@@ -1,9 +1,8 @@
-
+import { useMemo } from "react";
 import CashFlowBar from "../components/CashFlowBar.jsx";
 import GoalCard from "../components/GoalCard.jsx";
 import OverviewStat from "../components/OverviewStat.jsx";
 import MiniTransactionsWidget from "../components/MiniTransactionsWidget.jsx";
-
 
 function formatCurrency(value) {
   const num = Number(value) || 0;
@@ -12,6 +11,49 @@ function formatCurrency(value) {
     currency: "USD",
     maximumFractionDigits: 2,
   });
+}
+
+// Turn a date string into a "YYYY-MM" key
+function getMonthKeyFromDate(dateStr) {
+  if (!dateStr) return null;
+
+  // Case 1: already like "2025-12-11" or "2025-12"
+  if (/^\d{4}-\d{2}/.test(dateStr)) {
+    return dateStr.slice(0, 7); // "YYYY-MM"
+  }
+
+  // Case 2: formats like "12/11/2025" or "12-11-25"
+  const m = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  if (m) {
+    let [_, mm, dd, yy] = m;
+    mm = mm.padStart(2, "0");
+    let year = yy.length === 2 ? `20${yy}` : yy;
+    return `${year}-${mm}`;
+  }
+
+  return null;
+}
+
+function formatMonthLabel(key) {
+  if (key === "all") return "All months";
+  const [year, month] = key.split("-");
+  const names = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const idx = parseInt(month, 10) - 1;
+  if (Number.isNaN(idx) || idx < 0 || idx > 11) return key;
+  return `${names[idx]} ${year}`;
 }
 
 export default function DashboardPage({
@@ -28,6 +70,17 @@ export default function DashboardPage({
   onDeleteTransaction,
   onClearTransactions,
 }) {
+  // Build dropdown options from transaction dates
+  const monthOptions = useMemo(() => {
+    const set = new Set(
+      (transactions || [])
+        .map((t) => getMonthKeyFromDate(t.date))
+        .filter(Boolean)
+    );
+    const keys = Array.from(set).sort(); // "2025-01", "2025-02", ...
+    return ["all", ...keys];
+  }, [transactions]);
+
   return (
     <div className="space-y-8">
       {/* HEADER ROW */}
@@ -47,9 +100,11 @@ export default function DashboardPage({
             onChange={(e) => onMonthChange(e.target.value)}
             className="text-xs rounded-full border border-gray-700 bg-[#050505] px-3 py-1 outline-none text-gray-200"
           >
-            <option value="all">All months</option>
-            <option value="2025-11">Nov 2025</option>
-            <option value="2025-12">Dec 2025</option>
+            {monthOptions.map((key) => (
+              <option key={key} value={key}>
+                {formatMonthLabel(key)}
+              </option>
+            ))}
           </select>
         </div>
       </div>
