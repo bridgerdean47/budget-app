@@ -59,6 +59,15 @@ function getBudgetTotals(budget) {
   return { totalIncome, totalFixed, totalVariable, remainingForGoals };
 }
 
+function formatCurrency(value) {
+  const num = Number(value) || 0;
+  return num.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
+}
+
 /* ---------- Main App ---------- */
 
 export default function App() {
@@ -67,7 +76,7 @@ export default function App() {
   const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState("all");
 
-  // ---------- STEP 2: Budget state ----------
+  // ---------- Budget state ----------
   const [budget, setBudget] = useState(() => {
     try {
       const saved = localStorage.getItem("budget-v1");
@@ -78,7 +87,6 @@ export default function App() {
   });
 
   const budgetTotals = getBudgetTotals(budget);
-
 
   const isDark = theme === "dark";
 
@@ -99,7 +107,6 @@ export default function App() {
       }
     } catch (err) {
       console.error("Error reading saved transactions", err);
-      // if it's corrupted JSON, clear it so it doesn't break future loads
       localStorage.removeItem(TRANSACTIONS_KEY);
     }
   }, []);
@@ -113,15 +120,14 @@ export default function App() {
     }
   }, [transactions]);
 
-  // ---------- STEP 2: Save budget ----------
-useEffect(() => {
-  try {
-    localStorage.setItem("budget-v1", JSON.stringify(budget));
-  } catch (err) {
-    console.error("Error saving budget", err);
-  }
-}, [budget]);
-
+  // Save budget
+  useEffect(() => {
+    try {
+      localStorage.setItem("budget-v1", JSON.stringify(budget));
+    } catch (err) {
+      console.error("Error saving budget", err);
+    }
+  }, [budget]);
 
   /* ---------- Month filtering + summary ---------- */
 
@@ -183,24 +189,23 @@ useEffect(() => {
   const headerClass =
     "border-b sticky top-0 z-50 backdrop-blur bg-[#050505cc] border-red-900";
 
-const navActive =
-  "px-4 py-1 rounded-full border border-red-500 bg-red-500/10 text-red-300 " +
-  "transition transform hover:-translate-y-0.5 hover:shadow-[0_0_18px_rgba(248,113,113,0.7)]";
+  const navActive =
+    "px-4 py-1 rounded-full border border-red-500 bg-red-500/10 text-red-300 " +
+    "transition transform hover:-translate-y-0.5 hover:shadow-[0_0_18px_rgba(248,113,113,0.7)]";
 
-const navInactive =
-  "px-4 py-1 rounded-full border border-gray-700 text-gray-300 " +
-  "transition transform hover:-translate-y-0.5 hover:border-red-500 hover:text-red-300 " +
-  "hover:shadow-[0_0_16px_rgba(248,113,113,0.5)]";
+  const navInactive =
+    "px-4 py-1 rounded-full border border-gray-700 text-gray-300 " +
+    "transition transform hover:-translate-y-0.5 hover:border-red-500 hover:text-red-300 " +
+    "hover:shadow-[0_0_16px_rgba(248,113,113,0.5)]";
 
-const cardClass =
-  "rounded-3xl p-6 border bg-[#080808] border-red-900 shadow-[0_0_40px_rgba(0,0,0,0.7)] " +
-  "transition-transform transition-shadow duration-200 " +
-  "hover:-translate-y-1 hover:border-red-500 hover:shadow-[0_0_40px_rgba(248,113,113,0.55)]";
-
+  const cardClass =
+    "rounded-3xl p-6 border bg-[#080808] border-red-900 shadow-[0_0_40px_rgba(0,0,0,0.7)] " +
+    "transition-transform transition-shadow duration-200 " +
+    "hover:-translate-y-1 hover:border-red-500 hover:shadow-[0_0_40px_rgba(248,113,113,0.55)]";
 
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
-    { id: "budget", label: "Budget" },
+    { id: "budget", label: "Estimate" }, // renamed
     { id: "transactions", label: "Transactions" },
     { id: "goals", label: "Goals" },
   ];
@@ -214,48 +219,49 @@ const cardClass =
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-xs font-semibold tracking-[0.25em] text-red-400">
-              B&amp;M BUDGET
+              B&M BUDGET
             </h1>
           </div>
 
-<div className="flex items-center gap-4">
-  <nav className="flex gap-2 text-sm">
-    {tabs.map((t) => (
-      <button
-        key={t.id}
-        onClick={() => setActiveTab(t.id)}
-        className={activeTab === t.id ? navActive : navInactive}
-      >
-        {t.label}
-      </button>
-    ))}
-  </nav>
-</div>
+          <div className="flex items-center gap-4">
+            <nav className="flex gap-2 text-sm">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  className={activeTab === t.id ? navActive : navInactive}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </nav>
+          </div>
         </div>
       </header>
 
       {/* MAIN CONTENT */}
       <main className="max-w-6xl mx-auto px-6 py-10">
         {activeTab === "dashboard" && (
-  <DashboardPage
-    theme={theme}
-    cardClass={cardClass}
-    monthSummary={monthSummary}
-    selectedMonth={selectedMonth}
-    onMonthChange={setSelectedMonth}
-    budgetTotals={budgetTotals}   // ★ Added
-  />
-)}
+          <DashboardPage
+            theme={theme}
+            cardClass={cardClass}
+            monthSummary={monthSummary}
+            selectedMonth={selectedMonth}
+            onMonthChange={setSelectedMonth}
+            budgetTotals={budgetTotals}
+          />
+        )}
 
-{activeTab === "budget" && (
-  <BudgetPage
-    cardClass={cardClass}
-    monthSummary={monthSummary}
-    budget={budget}            // ★ Added
-    setBudget={setBudget}      // ★ Added
-    budgetTotals={budgetTotals} // ★ Added
-  />
-)}
+        {activeTab === "budget" && (
+          <BudgetPage
+            cardClass={cardClass}
+            monthSummary={monthSummary}
+            budget={budget}
+            setBudget={setBudget}
+            budgetTotals={budgetTotals}
+          />
+        )}
+
         {activeTab === "transactions" && (
           <TransactionsPage
             theme={theme}
@@ -288,8 +294,6 @@ function DashboardPage({
   onMonthChange,
   budgetTotals,
 }) {
-  const isDark = theme === "dark";
-
   const allocationPercent =
     monthSummary.income > 0
       ? ((monthSummary.expenses + monthSummary.payments) /
@@ -316,7 +320,6 @@ function DashboardPage({
             className="text-xs rounded-full border border-gray-700 bg-[#050505] px-3 py-1 outline-none text-gray-200"
           >
             <option value="all">All months</option>
-            {/* You can add specific months you care about */}
             <option value="2025-11">Nov 2025</option>
             <option value="2025-12">Dec 2025</option>
           </select>
@@ -329,35 +332,36 @@ function DashboardPage({
         </h3>
 
         <div className="grid gap-6 md:grid-cols-4">
-                {budgetTotals && (
+          <OverviewStat
+            label="INCOME"
+            value={monthSummary.income}
+            color="text-green-400"
+          />
+          <OverviewStat
+            label="EXPENSES"
+            value={monthSummary.expenses}
+            color="text-red-500"
+          />
+          <OverviewStat
+            label="PAYMENTS"
+            value={monthSummary.payments}
+            color="text-yellow-400"
+          />
+          <OverviewStat
+            label="LEFTOVER"
+            value={monthSummary.leftover}
+            color="text-white"
+          />
+        </div>
+
+        {budgetTotals && (
           <p className="mt-4 text-xs text-gray-400">
             Budget remaining for goals:{" "}
             <span className="text-white">
-              ${budgetTotals.remainingForGoals.toFixed(2)}
+              {formatCurrency(budgetTotals.remainingForGoals)}
             </span>
           </p>
         )}
-<OverviewStat
-  label="INCOME"
-  value={monthSummary.income}
-  color="text-green-400"
-/>
-<OverviewStat
-  label="EXPENSES"
-  value={monthSummary.expenses}
-  color="text-red-500"
-/>
-<OverviewStat
-  label="PAYMENTS"
-  value={monthSummary.payments}
-  color="text-yellow-400"
-/>
-<OverviewStat
-  label="LEFTOVER"
-  value={monthSummary.leftover}
-  color="text-white"
-/>
-        </div>
 
         <div className="mt-6 space-y-2">
           <p className="text-xs text-gray-400 uppercase tracking-[0.16em]">
@@ -390,9 +394,25 @@ function DashboardPage({
   );
 }
 
-/* ---------- Budget ---------- */
+/* ---------- Spending Estimate / Budget tab ---------- */
 
 function BudgetPage({ cardClass, monthSummary, budget, setBudget, budgetTotals }) {
+  const monthLabel = budget.monthLabel || monthSummary.monthLabel;
+
+  const { totalIncome, totalFixed, totalVariable, remainingForGoals } =
+    budgetTotals || {
+      totalIncome: 0,
+      totalFixed: 0,
+      totalVariable: 0,
+      remainingForGoals: 0,
+    };
+
+  const plannedLeftAfterBills = totalIncome - totalFixed;
+  const actualIncome = monthSummary.income;
+  const actualSpending = monthSummary.expenses + monthSummary.payments;
+  const estimatedSavings =
+    totalIncome - totalFixed - actualSpending;
+
   const handleAddItem = (listKey) => {
     setBudget((prev) => {
       const nextId = Date.now();
@@ -420,23 +440,103 @@ function BudgetPage({ cardClass, monthSummary, budget, setBudget, budgetTotals }
     });
   };
 
-  const monthLabel = budget.monthLabel || monthSummary.monthLabel;
-  const { totalIncome, totalFixed, totalVariable, remainingForGoals } =
-    budgetTotals || { totalIncome: 0, totalFixed: 0, totalVariable: 0, remainingForGoals: 0 };
-
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-3xl font-bold text-gray-100">
-            {monthLabel} Budget
+            {monthLabel} Spending Estimate
           </h2>
           <p className="text-gray-400 text-sm">
-            Income → Expenses → Goals
+            Plan your income and bills, then compare to real spending.
           </p>
         </div>
       </header>
 
+      {/* Summary card: planned vs actual */}
+      <section className={cardClass}>
+        <h3 className="text-xs font-semibold tracking-[0.28em] text-red-400 mb-4">
+          ESTIMATE SUMMARY
+        </h3>
+
+        <div className="grid gap-4 md:grid-cols-3 text-sm">
+          <div className="space-y-1">
+            <p className="text-[0.7rem] tracking-[0.16em] text-gray-400 uppercase">
+              Planned Income
+            </p>
+            <p className="text-lg font-semibold text-green-400">
+              {formatCurrency(totalIncome)}
+            </p>
+            <p className="text-[0.7rem] text-gray-500">
+              From your income list below.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[0.7rem] tracking-[0.16em] text-gray-400 uppercase">
+              Bills (Fixed + Variable)
+            </p>
+            <p className="text-lg font-semibold text-red-400">
+              {formatCurrency(totalFixed + totalVariable)}
+            </p>
+            <p className="text-[0.7rem] text-gray-500">
+              What you expect to spend this month.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[0.7rem] tracking-[0.16em] text-gray-400 uppercase">
+              Planned Left After Bills
+            </p>
+            <p className="text-lg font-semibold text-white">
+              {formatCurrency(plannedLeftAfterBills)}
+            </p>
+            <p className="text-[0.7rem] text-gray-500">
+              Income minus fixed bills only.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3 text-sm">
+          <div className="space-y-1">
+            <p className="text-[0.7rem] tracking-[0.16em] text-gray-400 uppercase">
+              Actual Income (Selected Month)
+            </p>
+            <p className="text-lg font-semibold text-green-400">
+              {formatCurrency(actualIncome)}
+            </p>
+            <p className="text-[0.7rem] text-gray-500">
+              From imported transactions.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[0.7rem] tracking-[0.16em] text-gray-400 uppercase">
+              Actual Spending + Payments
+            </p>
+            <p className="text-lg font-semibold text-red-400">
+              {formatCurrency(actualSpending)}
+            </p>
+            <p className="text-[0.7rem] text-gray-500">
+              Expenses plus payments this month.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[0.7rem] tracking-[0.16em] text-gray-400 uppercase">
+              Estimated Savings
+            </p>
+            <p className="text-lg font-semibold text-emerald-400">
+              {formatCurrency(estimatedSavings)}
+            </p>
+            <p className="text-[0.7rem] text-gray-500">
+              Planned income − bills − actual spending.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Editable budget lists (same as before) */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Income */}
         <section className={cardClass}>
@@ -488,7 +588,7 @@ function BudgetPage({ cardClass, monthSummary, budget, setBudget, budgetTotals }
               TOTAL
             </span>
             <span className="text-green-400 font-semibold">
-              ${totalIncome.toFixed(2)}
+              {formatCurrency(totalIncome)}
             </span>
           </div>
 
@@ -552,7 +652,7 @@ function BudgetPage({ cardClass, monthSummary, budget, setBudget, budgetTotals }
               TOTAL
             </span>
             <span className="text-red-500 font-semibold">
-              ${totalFixed.toFixed(2)}
+              {formatCurrency(totalFixed)}
             </span>
           </div>
 
@@ -621,7 +721,7 @@ function BudgetPage({ cardClass, monthSummary, budget, setBudget, budgetTotals }
               TOTAL
             </span>
             <span className="text-yellow-400 font-semibold">
-              ${totalVariable.toFixed(2)}
+              {formatCurrency(totalVariable)}
             </span>
           </div>
 
@@ -638,29 +738,31 @@ function BudgetPage({ cardClass, monthSummary, budget, setBudget, budgetTotals }
         {/* Remaining for goals */}
         <section className={cardClass}>
           <h3 className="text-xs font-semibold tracking-[0.28em] text-gray-400 mb-4">
-            REMAINING FOR GOALS
+            REMAINING FOR GOALS (BASED ON PLAN)
           </h3>
 
           <p className="text-3xl font-bold text-white mb-2">
-            ${remainingForGoals.toFixed(2)}
+            {formatCurrency(remainingForGoals)}
           </p>
           <p className="text-sm text-gray-400 mb-4">
-            This is what&apos;s left after income minus all listed expenses.
+            This is what&apos;s left after planned income minus all planned
+            expenses. Use it for savings, debt, or your Japan trip.
           </p>
 
-          <button
-            type="button"
-            className="inline-flex items-center justify-center px-4 py-2 rounded-full border border-cyan-500 text-xs text-cyan-300 
-                       cursor-not-allowed opacity-60"
-          >
-            Edit Budget (coming soon)
-          </button>
+          <p className="text-xs text-gray-500">
+            Your actual month leftover (using real transactions) is{" "}
+            <span className="text-emerald-400 font-semibold">
+              {formatCurrency(monthSummary.leftover)}
+            </span>
+            .
+          </p>
         </section>
       </div>
     </div>
   );
 }
 
+/* ---------- Transactions ---------- */
 
 function TransactionsPage({
   theme,
@@ -939,7 +1041,6 @@ function TransactionsPage({
   );
 }
 
-
 /* ---------- Goals tab ---------- */
 
 function GoalsPage({ cardClass }) {
@@ -961,12 +1062,9 @@ function GoalsPage({ cardClass }) {
 
 /* ---------- Cash-flow Sankey ---------- */
 
-/* ---------- Cash-flow Sankey ---------- */
-
 function CashFlowSankey({ theme, income }) {
   const isDark = theme === "dark";
 
-  // If no income, don't render the chart
   if (!income || income <= 0) return null;
 
   const flows = [
@@ -974,21 +1072,21 @@ function CashFlowSankey({ theme, income }) {
       id: "savings",
       label: "Savings",
       share: 0.33,
-      colorDark: "#4ade80", // green-400
+      colorDark: "#4ade80",
       colorLight: "#4ade80",
     },
     {
       id: "fixed",
       label: "Fixed",
       share: 0.38,
-      colorDark: "#ef4444", // red-500
+      colorDark: "#ef4444",
       colorLight: "#ef4444",
     },
     {
       id: "disc",
       label: "Discretionary",
       share: 0.29,
-      colorDark: "#facc15", // yellow-400
+      colorDark: "#facc15",
       colorLight: "#facc15",
     },
   ];
@@ -1101,7 +1199,10 @@ function CashFlowSankey({ theme, income }) {
               textAnchor="middle"
               fill={isDark ? "#e5e7eb" : "#111827"}
             >
-              ${income.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              $
+              {income.toLocaleString(undefined, {
+                maximumFractionDigits: 0,
+              })}
             </text>
           </svg>
         </div>
@@ -1141,6 +1242,7 @@ function CashFlowSankey({ theme, income }) {
     </section>
   );
 }
+
 /* ---------- Shared components ---------- */
 
 function OverviewStat({ label, value, color }) {
@@ -1161,14 +1263,14 @@ function GoalCard({ goal, theme }) {
   const p = Math.min(100, Math.round((goal.current / goal.target) * 100));
 
   return (
-<div
-  className={
-    "rounded-2xl p-4 border flex flex-col gap-3 transition-transform transition-shadow duration-200 " +
-    (isDark
-      ? "bg-[#050505] border-red-900 hover:border-red-500 hover:shadow-[0_0_30px_rgba(248,113,113,0.4)] hover:-translate-y-1"
-      : "bg-slate-100")
-  }
->
+    <div
+      className={
+        "rounded-2xl p-4 border flex flex-col gap-3 transition-transform transition-shadow duration-200 " +
+        (isDark
+          ? "bg-[#050505] border-red-900 hover:border-red-500 hover:shadow-[0_0_30px_rgba(248,113,113,0.4)] hover:-translate-y-1"
+          : "bg-slate-100")
+      }
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold bg-red-500/15 text-red-300">
@@ -1187,13 +1289,13 @@ function GoalCard({ goal, theme }) {
       </div>
 
       <div className="h-2 w-full overflow-hidden rounded-full bg-black">
-<div
-  className={
-    "h-full transition-all duration-700 " +
-    (p >= 80 ? "bg-green-400" : "bg-red-500")
-  }
-  style={{ width: `${p}%` }}
-/>
+        <div
+          className={
+            "h-full transition-all duration-700 " +
+            (p >= 80 ? "bg-green-400" : "bg-red-500")
+          }
+          style={{ width: `${p}%` }}
+        />
       </div>
     </div>
   );
@@ -1249,7 +1351,6 @@ function parseCsv(text, startId = 0) {
     headerLower = headerCols.map((c) => c.toLowerCase());
   }
 
-  // Example “bank1” format: Posting Date, Transaction Type, Amount, Description...
   const hasBank1Header =
     headerLower.includes("posting date") &&
     headerLower.includes("transaction type") &&
@@ -1274,7 +1375,6 @@ function parseCsv(text, startId = 0) {
     };
   }
 
-  // Example “bank2” format: Account ID, Transaction ID, Date, Description, Amount...
   const hasBank2Header =
     headerLower.includes("account id") &&
     headerLower.includes("transaction id") &&
@@ -1292,7 +1392,6 @@ function parseCsv(text, startId = 0) {
     };
   }
 
-  // Chase credit card CSV: Transaction Date, Post Date, Description, Category, Type, Amount, Memo
   const hasChaseHeader =
     headerLower.includes("transaction date") &&
     headerLower.includes("description") &&
@@ -1338,7 +1437,6 @@ function parseCsv(text, startId = 0) {
     );
     if (cols.length < 3) continue;
 
-    /* Bank format 1 */
     if (bank1) {
       const { postingIdx, txnTypeIdx, amountIdx, descIdx } = bank1;
       if (
@@ -1378,7 +1476,6 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
-    /* Bank format 2 */
     if (bank2) {
       const { dateIdx, descIdx, amountIdx } = bank2;
       if (
@@ -1417,7 +1514,6 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
-    /* Chase credit card */
     if (chase) {
       const { dateIdx, descIdx, amountIdx, typeIdx } = chase;
 
@@ -1455,7 +1551,6 @@ function parseCsv(text, startId = 0) {
         ) {
           type = "income";
         } else if (descLower.includes("payment")) {
-          // e.g. "Payment Thank You-Mobile"
           type = "payment";
         } else if (amount < 0) {
           type = "expense";
@@ -1474,7 +1569,6 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
-    /* Simple format A: Type, Description, Amount, Date */
     const firstLower = cols[0].toLowerCase();
     if (
       (firstLower === "income" || firstLower === "expense") &&
@@ -1497,7 +1591,6 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
-    /* Simple format B: Date, Description, Amount (YYYY-MM-DD) */
     if (isIsoDate(cols[0])) {
       const [dateRaw, desc, amountRaw] = cols;
       let amount = parseFloat(amountRaw.replace(/,/g, ""));
@@ -1516,7 +1609,6 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
-    /* Fallback format C: Description, 20251130:xxxx, Amount */
     if (/^\d{8}:/.test(cols[1])) {
       const desc = cols[0];
       const code = cols[1];
