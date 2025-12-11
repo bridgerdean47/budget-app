@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 const TRANSACTIONS_KEY = "bm-transactions-v1";
+const GOALS_KEY = "bm-goals-v1";
 
 /* ---------- Demo Goals ---------- */
 
-const goals = [
+const defaultGoals = [
   {
     id: 1,
     label: "Japan Trip",
@@ -22,6 +23,7 @@ const goals = [
     target: 16232.96,
   },
 ];
+
 
 /* ---------- Budget helpers ---------- */
 
@@ -76,7 +78,17 @@ export default function App() {
   const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState("all");
 
-  // ---------- Budget state ----------
+  // ---------- Goals State ----------
+  const [goals, setGoals] = useState(() => {
+    try {
+      const saved = localStorage.getItem(GOALS_KEY);
+      return saved ? JSON.parse(saved) : defaultGoals;
+    } catch {
+      return defaultGoals;
+    }
+  });
+
+  // Budget state
   const [budget, setBudget] = useState(() => {
     try {
       const saved = localStorage.getItem("budget-v1");
@@ -111,7 +123,7 @@ export default function App() {
     }
   }, []);
 
-  // Save transactions whenever they change (including CSV import)
+  // Save transactions whenever they change
   useEffect(() => {
     try {
       localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
@@ -128,6 +140,15 @@ export default function App() {
       console.error("Error saving budget", err);
     }
   }, [budget]);
+
+  // Save goals
+useEffect(() => {
+  try {
+    localStorage.setItem(GOALS_KEY, JSON.stringify(goals));
+  } catch (err) {
+    console.error("Error saving goals", err);
+  }
+}, [goals]);
 
   /* ---------- Month filtering + summary ---------- */
 
@@ -150,6 +171,11 @@ export default function App() {
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + t.amount, 0);
 
+  const transfers = filteredTransactions
+    .filter((t) => t.type === "transfer")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  // Transfers DO NOT affect leftover
   const leftover = income - expenses - payments;
 
   function formatMonthLabel(key) {
@@ -180,6 +206,7 @@ export default function App() {
     expenses,
     payments,
     leftover,
+    transfers,
   };
 
   /* ---------- Styles (Black + Red theme) ---------- */
@@ -205,7 +232,7 @@ export default function App() {
 
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
-    { id: "budget", label: "Estimate" }, // renamed
+    { id: "budget", label: "Estimate" },
     { id: "transactions", label: "Transactions" },
     { id: "goals", label: "Goals" },
   ];
@@ -249,6 +276,7 @@ export default function App() {
             selectedMonth={selectedMonth}
             onMonthChange={setSelectedMonth}
             budgetTotals={budgetTotals}
+            goals={goals}
           />
         )}
 
@@ -278,7 +306,9 @@ export default function App() {
           />
         )}
 
-        {activeTab === "goals" && <GoalsPage cardClass={cardClass} />}
+        {activeTab === "goals" && (
+  <GoalsPage cardClass={cardClass} goals={goals} setGoals={setGoals} />
+)}
       </main>
     </div>
   );
@@ -293,6 +323,7 @@ function DashboardPage({
   selectedMonth,
   onMonthChange,
   budgetTotals,
+  goals,
 }) {
   const allocationPercent =
     monthSummary.income > 0
@@ -300,6 +331,8 @@ function DashboardPage({
           monthSummary.income) *
         100
       : 0;
+
+  const totalSpending = monthSummary.expenses + monthSummary.payments;
 
   return (
     <div className="space-y-8">
@@ -377,7 +410,11 @@ function DashboardPage({
         </div>
       </section>
 
-      <CashFlowSankey theme={theme} income={monthSummary.income} />
+      <CashFlowBar
+        theme={theme}
+        income={monthSummary.income}
+        spending={totalSpending}
+      />
 
       <section>
         <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-red-400">
@@ -385,9 +422,9 @@ function DashboardPage({
         </h3>
 
         <div className="grid gap-4 md:grid-cols-2">
-          {goals.map((goal) => (
-            <GoalCard key={goal.id} goal={goal} theme={theme} />
-          ))}
+              {(goals || []).map((goal) => (
+      <GoalCard key={goal.id} goal={goal} theme={theme} />
+    ))}
         </div>
       </section>
     </div>
@@ -410,8 +447,7 @@ function BudgetPage({ cardClass, monthSummary, budget, setBudget, budgetTotals }
   const plannedLeftAfterBills = totalIncome - totalFixed;
   const actualIncome = monthSummary.income;
   const actualSpending = monthSummary.expenses + monthSummary.payments;
-  const estimatedSavings =
-    totalIncome - totalFixed - actualSpending;
+  const estimatedSavings = totalIncome - totalFixed - actualSpending;
 
   const handleAddItem = (listKey) => {
     setBudget((prev) => {
@@ -536,7 +572,7 @@ function BudgetPage({ cardClass, monthSummary, budget, setBudget, budgetTotals }
         </div>
       </section>
 
-      {/* Editable budget lists (same as before) */}
+      {/* Editable budget lists */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Income */}
         <section className={cardClass}>
@@ -771,27 +807,40 @@ function TransactionsPage({
   onAddTransactions,
   onUpdateTransaction,
 }) {
-  const [file, setFile] = useState(null);
   const [editing, setEditing] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const [sortConfig, setSortConfig] = useState({
+    key: "date",
+    direction: "desc",
+  });
   const fileInputRef = useRef(null);
 
-  const handleImport = () => {
-    if (!file) {
-      alert("Choose or drop a CSV file first.");
+  const handleFileSelected = (file) => {
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setImportMessage("Please choose a .csv file.");
       return;
     }
+
+    setImportMessage(`Reading ${file.name}...`);
 
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target.result;
       const parsed = parseCsv(text, transactions.length);
       if (!parsed.length) {
-        alert("No valid rows found in CSV.");
+        setImportMessage("No valid rows found in CSV.");
       } else {
         onAddTransactions(parsed);
-        alert(`Imported ${parsed.length} transactions.`);
+        setImportMessage(
+          `Imported ${parsed.length} transactions from ${file.name}.`
+        );
       }
+    };
+    reader.onerror = () => {
+      setImportMessage("Error reading file.");
     };
     reader.readAsText(file);
   };
@@ -816,12 +865,46 @@ function TransactionsPage({
     const droppedFile = e.dataTransfer.files?.[0];
     if (!droppedFile) return;
 
-    if (!droppedFile.name.toLowerCase().endsWith(".csv")) {
-      alert("Please drop a .csv file.");
-      return;
+    handleFileSelected(droppedFile);
+  };
+
+  const handleSortClick = (key) => {
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        return {
+          key,
+          direction: prev.direction === "asc" ? "desc" : "asc",
+        };
+      }
+      return { key, direction: "asc" };
+    });
+  };
+
+  const sortedTransactions = useMemo(() => {
+    const data = [...transactions];
+    if (!sortConfig.key) return data;
+
+    if (sortConfig.key === "date") {
+      data.sort((a, b) => {
+        const da = a.date ? new Date(a.date) : new Date(0);
+        const db = b.date ? new Date(b.date) : new Date(0);
+        const cmp = da - db;
+        return sortConfig.direction === "asc" ? cmp : -cmp;
+      });
     }
 
-    setFile(droppedFile);
+    return data;
+  }, [transactions, sortConfig]);
+
+  const renderSortIcon = (key) => {
+    if (sortConfig.key !== key) {
+      return <span className="text-[0.6rem] text-gray-500">⇅</span>;
+    }
+    return (
+      <span className="text-[0.6rem] text-gray-300">
+        {sortConfig.direction === "asc" ? "▲" : "▼"}
+      </span>
+    );
   };
 
   return (
@@ -875,28 +958,15 @@ function TransactionsPage({
               type="file"
               accept=".csv"
               className="hidden"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              onChange={(e) =>
+                handleFileSelected(e.target.files?.[0] || null)
+              }
             />
           </div>
 
-          {/* Import button + file name */}
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={handleImport}
-              className="rounded-full border px-4 py-1.5 text-xs border-red-500 text-red-300 
-                         transition transform hover:-translate-y-0.5 hover:bg-red-500 hover:text-black 
-                         hover:shadow-[0_0_20px_rgba(248,113,113,0.7)]"
-            >
-              Import CSV
-            </button>
-
-            {file && (
-              <span className="text-[0.7rem] text-gray-400">
-                Selected: {file.name}
-              </span>
-            )}
-          </div>
+          {importMessage && (
+            <p className="text-[0.7rem] text-gray-400">{importMessage}</p>
+          )}
         </div>
       </section>
 
@@ -910,7 +980,16 @@ function TransactionsPage({
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-[#111111] text-gray-200 border-b border-red-900">
-                <th className="px-4 py-3 text-left font-semibold">Date</th>
+                <th className="px-4 py-3 text-left font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => handleSortClick("date")}
+                    className="flex items-center gap-1 select-none"
+                  >
+                    <span>Date</span>
+                    {renderSortIcon("date")}
+                  </button>
+                </th>
                 <th className="px-4 py-3 text-left font-semibold">
                   Description
                 </th>
@@ -919,7 +998,7 @@ function TransactionsPage({
               </tr>
             </thead>
             <tbody>
-              {transactions.map((t) => (
+              {sortedTransactions.map((t) => (
                 <tr
                   key={t.id}
                   onClick={() => setEditing(t)}
@@ -936,6 +1015,8 @@ function TransactionsPage({
                         ? "text-green-400"
                         : t.type === "payment"
                         ? "text-yellow-400"
+                        : t.type === "transfer"
+                        ? "text-blue-400"
                         : "text-red-500")
                     }
                   >
@@ -943,6 +1024,8 @@ function TransactionsPage({
                       ? "Income"
                       : t.type === "payment"
                       ? "Payment"
+                      : t.type === "transfer"
+                      ? "Transfer"
                       : "Expense"}
                   </td>
                   <td className="px-4 py-2 text-gray-100">
@@ -999,6 +1082,7 @@ function TransactionsPage({
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
                 <option value="payment">Payment</option>
+                <option value="transfer">Transfer</option>
               </select>
             </div>
 
@@ -1043,200 +1127,169 @@ function TransactionsPage({
 
 /* ---------- Goals tab ---------- */
 
-function GoalsPage({ cardClass }) {
+function GoalsPage({ cardClass, goals, setGoals }) {
+  const [amounts, setAmounts] = useState({});
+
+  const handleChangeAmount = (id, value) => {
+    setAmounts((prev) => ({
+      ...prev,
+      [id]: value,
+    }));
+  };
+
+  const handleContribute = (id) => {
+    const raw = amounts[id];
+    const amt = parseFloat(raw);
+    if (!amt || amt <= 0) return;
+
+    setGoals((prev) =>
+      prev.map((g) =>
+        g.id === id ? { ...g, current: (Number(g.current) || 0) + amt } : g
+      )
+    );
+
+    // clear input
+    setAmounts((prev) => ({
+      ...prev,
+      [id]: "",
+    }));
+  };
+
   return (
     <div className="space-y-4">
       <h2 className="text-3xl font-bold text-gray-100">Goals</h2>
       <p className="text-gray-400 text-sm">
-        We will add goal creation / editing here later.
+        Add contributions to update the dashboard progress bars.
       </p>
 
-      <section className={cardClass}>
-        <p className="text-gray-400 text-sm">
-          For now, goals are visible on the Dashboard.
-        </p>
-      </section>
+      <div className="grid gap-4 md:grid-cols-2">
+        {goals.map((goal) => {
+          const pct = Math.min(
+            100,
+            Math.round(((Number(goal.current) || 0) / goal.target) * 100)
+          );
+
+          return (
+            <section key={goal.id} className={cardClass}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-400">
+                    {goal.code}
+                  </p>
+                  <h3 className="text-lg font-semibold text-gray-100">
+                    {goal.label}
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Plan: ${goal.planPerMonth}/mo
+                  </p>
+                </div>
+                <div className="text-right text-sm text-gray-200">
+                  <p>
+                    ${goal.current} / ${goal.target}
+                  </p>
+                  <p className="text-xs text-gray-500">{pct}% complete</p>
+                </div>
+              </div>
+
+              <div className="h-2 w-full overflow-hidden rounded-full bg-black mb-4">
+                <div
+                  className={
+                    "h-full transition-all duration-700 " +
+                    (pct >= 80 ? "bg-green-400" : "bg-red-500")
+                  }
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 text-sm">
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Amount"
+                  className="flex-1 rounded-full bg-black border border-gray-700 px-3 py-1.5 text-xs text-gray-100 outline-none focus:border-red-400"
+                  value={amounts[goal.id] ?? ""}
+                  onChange={(e) =>
+                    handleChangeAmount(goal.id, e.target.value)
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={() => handleContribute(goal.id)}
+                  className="px-4 py-1.5 rounded-full border border-red-500 text-xs text-red-200 hover:bg-red-500 hover:text-black transition"
+                >
+                  Contribute
+                </button>
+              </div>
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-/* ---------- Cash-flow Sankey ---------- */
+/* ---------- Cash-flow Bar ---------- */
 
-function CashFlowSankey({ theme, income }) {
+function CashFlowBar({ theme, income, spending }) {
+  const [hoverSide, setHoverSide] = useState(null);
+
+  if (!income && !spending) return null;
+
+  const total = income + spending;
+  const incomeShare = total > 0 ? income / total : 0.5;
+  const spendingShare = total > 0 ? spending / total : 0.5;
+
+  const net = income - spending;
   const isDark = theme === "dark";
-
-  if (!income || income <= 0) return null;
-
-  const flows = [
-    {
-      id: "savings",
-      label: "Savings",
-      share: 0.33,
-      colorDark: "#4ade80",
-      colorLight: "#4ade80",
-    },
-    {
-      id: "fixed",
-      label: "Fixed",
-      share: 0.38,
-      colorDark: "#ef4444",
-      colorLight: "#ef4444",
-    },
-    {
-      id: "disc",
-      label: "Discretionary",
-      share: 0.29,
-      colorDark: "#facc15",
-      colorLight: "#facc15",
-    },
-  ];
-
-  const slices = flows.map((f) => ({
-    ...f,
-    value: income * f.share,
-  }));
-
-  const total = slices.reduce((s, x) => s + x.value, 0);
-
-  const makeArcPath = (cx, cy, rOuter, rInner, startAngle, endAngle) => {
-    const toRad = (deg) => ((deg - 90) * Math.PI) / 180;
-
-    const sOuter = toRad(startAngle);
-    const eOuter = toRad(endAngle);
-    const sInner = eOuter;
-    const eInner = sOuter;
-
-    const x1Outer = cx + rOuter * Math.cos(sOuter);
-    const y1Outer = cy + rOuter * Math.sin(sOuter);
-    const x2Outer = cx + rOuter * Math.cos(eOuter);
-    const y2Outer = cy + rOuter * Math.sin(eOuter);
-
-    const x1Inner = cx + rInner * Math.cos(sInner);
-    const y1Inner = cy + rInner * Math.sin(sInner);
-    const x2Inner = cx + rInner * Math.cos(eInner);
-    const y2Inner = cy + rInner * Math.sin(eInner);
-
-    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
-
-    return [
-      `M ${x1Outer} ${y1Outer}`,
-      `A ${rOuter} ${rOuter} 0 ${largeArcFlag} 1 ${x2Outer} ${y2Outer}`,
-      `L ${x1Inner} ${y1Inner}`,
-      `A ${rInner} ${rInner} 0 ${largeArcFlag} 0 ${x2Inner} ${y2Inner}`,
-      "Z",
-    ].join(" ");
-  };
-
-  let currentAngle = 0;
-  const withAngles = slices.map((s) => {
-    const sliceAngle = total > 0 ? (s.value / total) * 360 : 0;
-    const startAngle = currentAngle;
-    const endAngle = currentAngle + sliceAngle;
-    currentAngle = endAngle;
-    return { ...s, startAngle, endAngle };
-  });
-
-  const cx = 90;
-  const cy = 90;
-  const outerRadius = 70;
-  const innerRadius = 45;
 
   return (
     <section className="mt-2 rounded-3xl border border-red-900 bg-black p-4">
-      <h3 className="mb-2 text-xs font-semibold tracking-[0.28em] text-red-400">
+      <h3 className="mb-3 text-xs font-semibold tracking-[0.28em] text-red-400">
         CASH FLOW
       </h3>
 
-      <div className="rounded-2xl px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-6 bg-[#050505]">
-        <div className="flex justify-center items-center">
-          <svg width="180" height="180" viewBox="0 0 180 180">
-            <circle
-              cx={cx}
-              cy={cy}
-              r={outerRadius}
-              fill={isDark ? "#050505" : "#e7ebdd"}
-            />
-
-            {withAngles.map((slice) => {
-              const color = isDark ? slice.colorDark : slice.colorLight;
-              const d = makeArcPath(
-                cx,
-                cy,
-                outerRadius,
-                innerRadius,
-                slice.startAngle,
-                slice.endAngle
-              );
-              return (
-                <path
-                  key={slice.id}
-                  d={d}
-                  fill={color}
-                  fillOpacity={0.9}
-                  stroke={isDark ? "#050505" : "#e7ebdd"}
-                  strokeWidth={1}
-                />
-              );
-            })}
-
-            <circle
-              cx={cx}
-              cy={cy}
-              r={innerRadius - 6}
-              fill={isDark ? "#050505" : "#f4f3ec"}
-            />
-            <text
-              x={cx}
-              y={cy - 6}
-              textAnchor="middle"
-              fill={isDark ? "#e5e7eb" : "#111827"}
-            >
-              Income
-            </text>
-            <text
-              x={cx}
-              y={cy + 12}
-              textAnchor="middle"
-              fill={isDark ? "#e5e7eb" : "#111827"}
-            >
-              $
-              {income.toLocaleString(undefined, {
-                maximumFractionDigits: 0,
-              })}
-            </text>
-          </svg>
+      <div className="space-y-3">
+        <div className="relative h-6 w-full rounded-full bg-[#020617] overflow-hidden">
+          {/* Left (spending) */}
+          <div
+            className="absolute inset-y-0 left-0 bg-red-600/80 cursor-pointer"
+            style={{ width: `${spendingShare * 100}%` }}
+            onMouseEnter={() => setHoverSide("spending")}
+            onMouseLeave={() => setHoverSide(null)}
+            title={`Spending: ${formatCurrency(spending)}`}
+          />
+          {/* Right (income) */}
+          <div
+            className="absolute inset-y-0 right-0 bg-green-500/80 cursor-pointer"
+            style={{ width: `${incomeShare * 100}%` }}
+            onMouseEnter={() => setHoverSide("income")}
+            onMouseLeave={() => setHoverSide(null)}
+            title={`Income: ${formatCurrency(income)}`}
+          />
+          {/* Center zero line */}
+          <div className="absolute inset-y-1 left-1/2 w-[2px] bg-gray-700/80" />
         </div>
 
-        <div className="flex-1 space-y-3">
-          {withAngles.map((slice) => {
-            const pct = total > 0 ? Math.round((slice.value / total) * 100) : 0;
-            const color = isDark ? slice.colorDark : slice.colorLight;
-            return (
-              <div
-                key={slice.id}
-                className="flex items-center justify-between text-xs sm:text-sm"
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className="inline-block h-3 w-3 rounded-full"
-                    style={{ backgroundColor: color }}
-                  />
-                  <span className="font-medium text-gray-100">
-                    {slice.label}
-                  </span>
-                </div>
-                <div className="text-right text-gray-400">
-                  <span className="mr-2">
-                    $
-                    {slice.value.toLocaleString(undefined, {
-                      maximumFractionDigits: 0,
-                    })}
-                  </span>
-                  <span>{pct}%</span>
-                </div>
-              </div>
-            );
-          })}
+        <div className="flex items-center justify-between text-xs sm:text-sm text-gray-300">
+          <span>
+            {hoverSide === "income"
+              ? `Income this month: ${formatCurrency(income)}`
+              : hoverSide === "spending"
+              ? `Spending this month: ${formatCurrency(spending)}`
+              : `Hover green/red to see exact amounts.`}
+          </span>
+          <span
+            className={
+              "font-semibold " +
+              (net > 0
+                ? "text-emerald-400"
+                : net < 0
+                ? "text-red-400"
+                : "text-gray-200")
+            }
+          >
+            Net: {formatCurrency(net)}
+          </span>
         </div>
       </div>
     </section>
@@ -1437,6 +1490,7 @@ function parseCsv(text, startId = 0) {
     );
     if (cols.length < 3) continue;
 
+    /* Bank format 1 */
     if (bank1) {
       const { postingIdx, txnTypeIdx, amountIdx, descIdx } = bank1;
       if (
@@ -1462,8 +1516,20 @@ function parseCsv(text, startId = 0) {
         }
 
         const typeLower = txnTypeRaw.toLowerCase();
-        const type =
+        let type =
           typeLower === "credit" || amount > 0 ? "income" : "expense";
+
+        // Detect transfers
+        const descLower = descRaw.toLowerCase();
+        if (
+          descLower.includes("transfer") ||
+          descLower.includes("xfer") ||
+          descLower.includes("share transfer") ||
+          descLower.includes("online banking transfer") ||
+          descLower.includes("member to member")
+        ) {
+          type = "transfer";
+        }
 
         result.push({
           id: idCounter++,
@@ -1476,6 +1542,7 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
+    /* Bank format 2 */
     if (bank2) {
       const { dateIdx, descIdx, amountIdx } = bank2;
       if (
@@ -1501,7 +1568,18 @@ function parseCsv(text, startId = 0) {
           date = `${m[3]}-${mm}-${dd}`;
         }
 
-        const type = amount >= 0 ? "income" : "expense";
+        let type = amount >= 0 ? "income" : "expense";
+
+        const descLower = descRaw.toLowerCase();
+        if (
+          descLower.includes("transfer") ||
+          descLower.includes("xfer") ||
+          descLower.includes("share transfer") ||
+          descLower.includes("online banking transfer") ||
+          descLower.includes("member to member")
+        ) {
+          type = "transfer";
+        }
 
         result.push({
           id: idCounter++,
@@ -1514,6 +1592,7 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
+    /* Chase credit card */
     if (chase) {
       const { dateIdx, descIdx, amountIdx, typeIdx } = chase;
 
@@ -1551,11 +1630,16 @@ function parseCsv(text, startId = 0) {
         ) {
           type = "income";
         } else if (descLower.includes("payment")) {
+          // e.g. "Payment Thank You-Mobile"
           type = "payment";
-        } else if (amount < 0) {
-          type = "expense";
-        } else {
-          type = "expense";
+        }
+
+        if (
+          descLower.includes("transfer") ||
+          descLower.includes("xfer") ||
+          descLower.includes("balance transfer")
+        ) {
+          type = "transfer";
         }
 
         result.push({
@@ -1569,16 +1653,36 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
+    /* Simple format A: Type, Description, Amount, Date */
     const firstLower = cols[0].toLowerCase();
     if (
-      (firstLower === "income" || firstLower === "expense") &&
+      (firstLower === "income" ||
+        firstLower === "expense" ||
+        firstLower === "payment" ||
+        firstLower === "transfer") &&
       cols.length >= 4
     ) {
       const [typeRaw, desc, amountRaw, dateRaw] = cols;
       let amount = parseFloat(amountRaw.replace(/,/g, ""));
       if (!Number.isFinite(amount)) continue;
 
-      const type = typeRaw.toLowerCase() === "income" ? "income" : "expense";
+      let type = "expense";
+      const tLower = typeRaw.toLowerCase();
+      if (tLower === "income") type = "income";
+      else if (tLower === "payment") type = "payment";
+      else if (tLower === "transfer") type = "transfer";
+
+      const descLower = desc.toLowerCase();
+      if (
+        descLower.includes("transfer") ||
+        descLower.includes("xfer") ||
+        descLower.includes("share transfer") ||
+        descLower.includes("online banking transfer") ||
+        descLower.includes("member to member")
+      ) {
+        type = "transfer";
+      }
+
       const date = dateRaw;
 
       result.push({
@@ -1591,12 +1695,25 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
+    /* Simple format B: Date, Description, Amount (YYYY-MM-DD) */
     if (isIsoDate(cols[0])) {
       const [dateRaw, desc, amountRaw] = cols;
       let amount = parseFloat(amountRaw.replace(/,/g, ""));
       if (!Number.isFinite(amount)) continue;
 
-      const type = amount >= 0 ? "income" : "expense";
+      let type = amount >= 0 ? "income" : "expense";
+
+      const descLower = desc.toLowerCase();
+      if (
+        descLower.includes("transfer") ||
+        descLower.includes("xfer") ||
+        descLower.includes("share transfer") ||
+        descLower.includes("online banking transfer") ||
+        descLower.includes("member to member")
+      ) {
+        type = "transfer";
+      }
+
       const date = dateRaw;
 
       result.push({
@@ -1609,6 +1726,7 @@ function parseCsv(text, startId = 0) {
       continue;
     }
 
+    /* Fallback format C: Description, 20251130:xxxx, Amount */
     if (/^\d{8}:/.test(cols[1])) {
       const desc = cols[0];
       const code = cols[1];
@@ -1625,7 +1743,18 @@ function parseCsv(text, startId = 0) {
         "-" +
         dateDigits.slice(6, 8);
 
-      const type = amount >= 0 ? "income" : "expense";
+      let type = amount >= 0 ? "income" : "expense";
+
+      const descLower = desc.toLowerCase();
+      if (
+        descLower.includes("transfer") ||
+        descLower.includes("xfer") ||
+        descLower.includes("share transfer") ||
+        descLower.includes("online banking transfer") ||
+        descLower.includes("member to member")
+      ) {
+        type = "transfer";
+      }
 
       result.push({
         id: idCounter++,
