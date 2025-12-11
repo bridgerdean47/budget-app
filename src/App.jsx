@@ -4,6 +4,7 @@ import BudgetPage from "./pages/BudgetPage.jsx";
 import TransactionsPage from "./pages/TransactionsPage.jsx";
 import GoalsPage from "./pages/GoalsPage.jsx";
 import CashFlowBar from "./components/CashFlowBar.jsx";
+import ReportsPage from "./pages/ReportsPage.jsx";
 
 const TRANSACTIONS_KEY = "bm-transactions-v1";
 const GOALS_KEY = "bm-goals-v1";
@@ -295,12 +296,14 @@ const monthSummary = {
     "transition-transform transition-shadow duration-200 " +
     "hover:-translate-y-1 hover:border-red-500 hover:shadow-[0_0_40px_rgba(248,113,113,0.55)]";
 
-  const tabs = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "budget", label: "Estimate" },
-    { id: "transactions", label: "Transactions" },
-    { id: "goals", label: "Goals" },
-  ];
+const tabs = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "budget", label: "Estimate" },
+  { id: "transactions", label: "Transactions" },
+  { id: "goals", label: "Goals" },
+  { id: "reports", label: "Reports" },
+];
+
 
   /* ---------- Render ---------- */
 
@@ -392,6 +395,12 @@ const monthSummary = {
     onUpdateGoal={handleUpdateGoal}
     onDeleteGoal={handleDeleteGoal}
     onContributeGoal={handleContributeGoal}
+  />
+)}
+{activeTab === "reports" && (
+  <ReportsPage
+    cardClass={cardClass}
+    transactions={filteredTransactions}
   />
 )}
       </main>

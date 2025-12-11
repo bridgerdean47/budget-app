@@ -1,7 +1,64 @@
-
 import { useState, useMemo, useRef } from "react";
 import { parseCsv } from "../lib/csv";
 
+/* ---------- Category helpers ---------- */
+
+const CATEGORY_OPTIONS = [
+  "Uncategorized",
+  "Automotive",
+  "Bills & Utilities",
+  "Entertainment",
+  "Food & Drink",
+  "Gas",
+  "Groceries",
+  "Health & Wellness",
+  "Personal",
+  "Shopping",
+  "Travel",
+];
+
+
+function guessCategoryFromDescription(desc = "") {
+  const d = desc.toLowerCase();
+
+  if (d.includes("walmart") || d.includes("grocery") || d.includes("winco"))
+    return "Groceries";
+  if (
+    d.includes("mcdonald") ||
+    d.includes("taco bell") ||
+    d.includes("burger king") ||
+    d.includes("restaurant") ||
+    d.includes("cafe")
+  )
+    return "Restaurants";
+  if (d.includes("shell") || d.includes("chevron") || d.includes("gas"))
+    return "Gas";
+  if (d.includes("rent") || d.includes("apartment")) return "Rent";
+  if (
+    d.includes("power") ||
+    d.includes("electric") ||
+    d.includes("water") ||
+    d.includes("gas & electric")
+  )
+    return "Utilities";
+  if (
+    d.includes("spotify") ||
+    d.includes("netflix") ||
+    d.includes("hulu") ||
+    d.includes("youtube")
+  )
+    return "Subscriptions";
+  if (d.includes("loan") || d.includes("payment")) return "Debt Payments";
+  if (d.includes("flight") || d.includes("hotel") || d.includes("airbnb"))
+    return "Travel";
+  if (d.includes("pet") || d.includes("vet")) return "Pets";
+  if (d.includes("insurance")) return "Insurance";
+  if (d.includes("amazon") || d.includes("target")) return "Shopping";
+
+  return null; // unknown → will become "Uncategorized"
+}
+
+/* ---------- Component ---------- */
 
 export default function TransactionsPage({
   theme,
@@ -34,7 +91,17 @@ export default function TransactionsPage({
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target.result;
-      const parsed = parseCsv(text, transactions.length);
+      const parsedRaw = parseCsv(text, transactions.length);
+
+      // Ensure every imported transaction has a category
+      const parsed = parsedRaw.map((tx) => ({
+        ...tx,
+        category:
+          tx.category ||
+          guessCategoryFromDescription(tx.description) ||
+          "Uncategorized",
+      }));
+
       if (!parsed.length) {
         setImportMessage("No valid rows found in CSV.");
       } else {
@@ -208,6 +275,7 @@ export default function TransactionsPage({
                   Description
                 </th>
                 <th className="px-4 py-3 text-left font-semibold">Type</th>
+                <th className="px-4 py-3 text-left font-semibold">Category</th>
                 <th className="px-4 py-3 text-left font-semibold">Amount</th>
                 <th className="px-4 py-3 text-center font-semibold">Del</th>
               </tr>
@@ -243,6 +311,28 @@ export default function TransactionsPage({
                       ? "Transfer"
                       : "Expense"}
                   </td>
+
+                  {/* Category dropdown */}
+                  <td className="px-4 py-2 text-gray-100">
+                    <select
+                      className="bg-[#050505] border border-gray-700 text-xs rounded px-2 py-1"
+                      value={t.category || "Uncategorized"}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) =>
+                        onUpdateTransaction({
+                          ...t,
+                          category: e.target.value,
+                        })
+                      }
+                    >
+                      {CATEGORY_OPTIONS.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
                   <td className="px-4 py-2 text-gray-100">
                     ${t.amount.toFixed(2)}
                   </td>
@@ -265,7 +355,7 @@ export default function TransactionsPage({
         </div>
       </section>
 
-      {/* MODAL EDITOR (unchanged) */}
+      {/* MODAL EDITOR */}
       {editing && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
           <div className="bg-[#101010] rounded-xl p-6 w-full max-w-md shadow-xl space-y-4 border border-red-700">
@@ -314,6 +404,23 @@ export default function TransactionsPage({
             </div>
 
             <div className="space-y-1">
+              <label className="text-sm text-gray-300">Category</label>
+              <select
+                className="w-full p-2 rounded bg-black text-gray-100 border border-gray-800"
+                value={editing.category || "Uncategorized"}
+                onChange={(e) =>
+                  setEditing({ ...editing, category: e.target.value })
+                }
+              >
+                {CATEGORY_OPTIONS.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
               <label className="text-sm text-gray-300">Amount</label>
               <input
                 type="number"
@@ -338,7 +445,15 @@ export default function TransactionsPage({
               <button
                 className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-500"
                 onClick={() => {
-                  onUpdateTransaction(editing);
+                  // Ensure saved transaction has a category
+                  const toSave = {
+                    ...editing,
+                    category:
+                      editing.category ||
+                      guessCategoryFromDescription(editing.description) ||
+                      "Uncategorized",
+                  };
+                  onUpdateTransaction(toSave);
                   setEditing(null);
                 }}
               >
