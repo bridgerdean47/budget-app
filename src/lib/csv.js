@@ -8,7 +8,6 @@ function splitCsvLine(line) {
     const ch = line[i];
 
     if (ch === '"') {
-      // toggle quote state, but handle double quotes inside quoted text
       if (inQuotes && line[i + 1] === '"') {
         current += '"';
         i++;
@@ -29,26 +28,128 @@ function splitCsvLine(line) {
 function normalizeDate(str) {
   if (!str) return "";
 
-  // mm/dd/yyyy or m/d/yyyy(/yy)
   const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (m) {
     let [, mm, dd, yy] = m;
     mm = mm.padStart(2, "0");
     dd = dd.padStart(2, "0");
     if (yy.length === 2) yy = "20" + yy;
-    return `${yy}-${mm}-${dd}`; // YYYY-MM-DD
+    return `${yy}-${mm}-${dd}`;
   }
 
-  // already in ISO or something else – just return
   return str;
 }
 
 function parseAmount(str) {
   if (!str) return NaN;
-  // remove $ and commas, keep sign
   const cleaned = str.replace(/[$,]/g, "").trim();
   if (!cleaned) return NaN;
   return parseFloat(cleaned);
+}
+
+// ⭐ CENTRALIZED CATEGORY GUESSING - runs for ALL imports
+function guessCategory(desc = "") {
+  if (!desc) return "Uncategorized";
+  
+  const d = desc.toLowerCase();
+
+  // 🏠 RENT - HIGHEST PRIORITY (check first!)
+  if (
+    d.includes("apts anderson") ||
+    d.includes("apts ander") ||
+    d.includes("ach apts") ||
+    d.includes("withdrawal ach apts") ||
+    d.includes("apartment") ||
+    d.includes(" apts ") ||
+    d.startsWith("apts ") ||
+    d.includes(" rent") ||
+    d.startsWith("rent") ||
+    d.includes("lease")
+  ) {
+    return "Rent";
+  }
+
+  // 💳 CREDIT CARD PAYMENTS
+  if (
+    d.includes("chase credit crd") ||
+    d.includes("credit card payment") ||
+    d.includes("cc payment") ||
+    d.includes("payment thank you")
+  ) {
+    return "Credit Card Payments";
+  }
+
+  // 💰 LOANS
+  if (d.includes("dept education") || d.includes("student loan")) {
+    return "Loans";
+  }
+
+  // 🔌 BILLS & UTILITIES
+  if (
+    d.includes("quantum fiber") ||
+    d.includes("internet") ||
+    d.includes("power") ||
+    d.includes("electric") ||
+    d.includes("water") ||
+    d.includes("gas & electric")
+  ) {
+    return "Bills & Utilities";
+  }
+
+  // 🛒 GROCERIES
+  if (d.includes("walmart") || d.includes("grocery") || d.includes("winco")) {
+    return "Groceries";
+  }
+
+  // 🍔 FOOD & DRINK
+  if (
+    d.includes("mcdonald") ||
+    d.includes("taco bell") ||
+    d.includes("burger king") ||
+    d.includes("wendy") ||
+    d.includes("subway") ||
+    d.includes("restaurant") ||
+    d.includes("cafe")
+  ) {
+    return "Food & Drink";
+  }
+
+  // ⛽ GAS
+  if (d.includes("shell") || d.includes("chevron") || d.includes("gas ")) {
+    return "Gas";
+  }
+
+  // 🎬 ENTERTAINMENT
+  if (
+    d.includes("spotify") ||
+    d.includes("netflix") ||
+    d.includes("hulu") ||
+    d.includes("youtube")
+  ) {
+    return "Entertainment";
+  }
+
+  // ✈️ TRAVEL
+  if (d.includes("flight") || d.includes("hotel") || d.includes("airbnb")) {
+    return "Travel";
+  }
+
+  // 🐾 PETS
+  if (d.includes("pet") || d.includes("vet")) {
+    return "Pets";
+  }
+
+  // 🛍️ SHOPPING
+  if (d.includes("amazon") || d.includes("target")) {
+    return "Shopping";
+  }
+
+  // 🏥 INSURANCE (check LAST to avoid false positives)
+  if (d.includes("insurance") && !d.includes("apts")) {
+    return "Insurance";
+  }
+
+  return "Uncategorized";
 }
 
 export function parseCsv(text, startId = 0) {
@@ -59,15 +160,13 @@ export function parseCsv(text, startId = 0) {
 
   const headerCells = splitCsvLine(lines[0]).map((c) => c.trim().toLowerCase());
 
-  // Detect Chase credit card CSV
+  // Detect formats
   const isChase =
     headerCells.includes("transaction date") &&
     headerCells.includes("description") &&
     headerCells.includes("category") &&
     headerCells.includes("amount");
 
-  // Detect FCU CSV (Money Market / Checking)
-  // Account ID, Transaction ID, Date, Description, Check Number, Category, Tags, Amount, Balance
   const isFcu =
     headerCells.includes("account id") &&
     headerCells.includes("transaction id") &&
@@ -75,21 +174,17 @@ export function parseCsv(text, startId = 0) {
     headerCells.includes("description") &&
     headerCells.includes("amount");
 
-  // Detect ICCU CSV
-  // Transaction ID, Posting Date, Effective Date, Transaction Type, Amount, ..., Description, Transaction Category, Type, Balance...
   const isIccu =
     headerCells.includes("posting date") &&
     headerCells.includes("description") &&
     headerCells.includes("transaction category") &&
     headerCells.includes("amount");
 
-  // Generic format 1: Type, Description, Amount, Date
   const isTypeDescAmountDate =
     headerCells[0] === "type" &&
     headerCells[1] === "description" &&
     headerCells[2] === "amount";
 
-  // Generic format 2: Date, Description, Amount
   const isDateDescAmount =
     headerCells[0] === "date" &&
     headerCells[1] === "description" &&
@@ -113,7 +208,6 @@ export function parseCsv(text, startId = 0) {
     if (isChase) {
       const rawDate = get("transaction date") || get("post date");
       const desc = get("description");
-      const category = get("category") || "Uncategorized";
       const rawAmount = parseAmount(get("amount"));
       if (!isFinite(rawAmount) || rawAmount === 0) continue;
 
@@ -125,7 +219,6 @@ export function parseCsv(text, startId = 0) {
         type = "expense";
       }
 
-      // special-case your “Payment Thank You-Mobile” as Payment
       if (desc.toLowerCase().includes("payment thank you")) {
         type = "payment";
       }
@@ -136,7 +229,7 @@ export function parseCsv(text, startId = 0) {
         description: desc,
         amount: Math.abs(rawAmount),
         type,
-        category,
+        category: guessCategory(desc), // ⭐ Use centralized guesser
       });
       continue;
     }
@@ -145,16 +238,22 @@ export function parseCsv(text, startId = 0) {
     if (isFcu) {
       const rawDate = get("date");
       const desc = get("description");
-      const category = get("category") || "Uncategorized";
       const rawAmount = parseAmount(get("amount"));
       if (!isFinite(rawAmount) || rawAmount === 0) continue;
 
-      let type = "expense";
-      // transfers & deposits based on description / category / sign
       const lowerDesc = desc.toLowerCase();
-      const lowerCat = category.toLowerCase();
+      const lowerCat = (get("category") || "").toLowerCase();
 
-      if (rawAmount > 0) {
+      let type = "expense";
+
+      // ⭐ CHECK FOR CREDIT CARD PAYMENTS FIRST
+      if (
+        lowerDesc.includes("chase credit crd") ||
+        lowerDesc.includes("credit card") ||
+        lowerDesc.includes("epay")
+      ) {
+        type = "payment";
+      } else if (rawAmount > 0) {
         // money in
         if (lowerCat.includes("transfer") || lowerDesc.includes("transfer")) {
           type = "transfer";
@@ -176,7 +275,7 @@ export function parseCsv(text, startId = 0) {
         description: desc,
         amount: Math.abs(rawAmount),
         type,
-        category,
+        category: guessCategory(desc), // ⭐ Use centralized guesser
       });
       continue;
     }
@@ -185,14 +284,13 @@ export function parseCsv(text, startId = 0) {
     if (isIccu) {
       const rawDate = get("posting date") || get("effective date");
       const desc = get("description");
-      const category = get("transaction category") || "Uncategorized";
       const rawAmount = parseAmount(get("amount"));
       if (!isFinite(rawAmount) || rawAmount === 0) continue;
 
       const transType = get("transaction type").toLowerCase();
       const typeField = get("type").toLowerCase();
       const lowerDesc = desc.toLowerCase();
-      const lowerCat = category.toLowerCase();
+      const lowerCat = (get("transaction category") || "").toLowerCase();
 
       let type = "expense";
 
@@ -218,7 +316,7 @@ export function parseCsv(text, startId = 0) {
         description: desc,
         amount: Math.abs(rawAmount),
         type,
-        category,
+        category: guessCategory(desc), // ⭐ Use centralized guesser
       });
       continue;
     }
@@ -247,49 +345,43 @@ export function parseCsv(text, startId = 0) {
         description: desc,
         amount: Math.abs(rawAmount),
         type,
-        category: "Uncategorized",
+        category: guessCategory(desc), // ⭐ Use centralized guesser
       });
       continue;
     }
 
     /* ---------- Generic: Date, Description, Amount ---------- */
-if (isDateDescAmount) {
-  const dateStr = cells[0]?.trim() || "";
-  const desc = cells[1]?.trim() || "";
-  const amountStr = (cells[2] || "").replace(/,/g, "");
-  const rawAmount = parseFloat(amountStr);
-  if (!isFinite(rawAmount) || rawAmount === 0) continue;
+    if (isDateDescAmount) {
+      const dateStr = cells[0]?.trim() || "";
+      const desc = cells[1]?.trim() || "";
+      const amountStr = (cells[2] || "").replace(/,/g, "");
+      const rawAmount = parseFloat(amountStr);
+      if (!isFinite(rawAmount) || rawAmount === 0) continue;
 
-  const d = desc.toLowerCase();
+      const d = desc.toLowerCase();
 
-  let type;
+      let type;
+      if (
+        d.includes("chase credit crd") ||
+        d.includes("credit card payment") ||
+        d.includes("cc payment") ||
+        d.includes("epay")
+      ) {
+        type = "payment";
+      } else {
+        type = rawAmount > 0 ? "income" : "expense";
+      }
 
-  // Treat credit-card payments as "payment" instead of "expense"
-  if (
-    d.includes("chase credit crd") ||
-    d.includes("credit card payment") ||
-    d.includes("cc payment") ||
-    d.includes("epay") // your FCU EPAY lines
-  ) {
-    type = "payment";
-  } else {
-    // normal rule: positive = income, negative = expense
-    type = rawAmount > 0 ? "income" : "expense";
-  }
-
-  out.push({
-    id: startId + out.length,
-    date: normalizeDate(dateStr),
-    description: desc,
-    amount: Math.abs(rawAmount),
-    type,
-    category: "Uncategorized",
-  });
-  continue;
-}
-
-
-    // fallback: skip unknown formats
+      out.push({
+        id: startId + out.length,
+        date: normalizeDate(dateStr),
+        description: desc,
+        amount: Math.abs(rawAmount),
+        type,
+        category: guessCategory(desc), // ⭐ Use centralized guesser
+      });
+      continue;
+    }
   }
 
   return out;

@@ -1,8 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { parseCsv } from "../lib/csv";
 
-
-
 export default function MiniTransactionsWidget({
   cardClass,
   transactions,
@@ -27,7 +25,9 @@ export default function MiniTransactionsWidget({
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target.result;
+      // ⭐ USE THE SAME parseCsv FROM csv.js - no extra processing!
       const parsed = parseCsv(text, transactions.length);
+      
       if (!parsed.length) {
         setImportMessage("No valid rows found in CSV.");
       } else {

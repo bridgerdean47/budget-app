@@ -108,8 +108,6 @@ export default function GoalsPage({
       ×
     </button>
   </div>
-  ...
-
               <div className="mb-2 text-sm text-gray-200 text-right">
                 ${Number(goal.current).toFixed(2)} / $
                 {Number(goal.target).toFixed(2)}

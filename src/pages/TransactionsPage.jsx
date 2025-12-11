@@ -31,6 +31,8 @@ const CATEGORY_OPTIONS = [
 const MERCHANT_CATEGORY_RULES = [
   { match: "apts anderson", category: "Rent" },
   { match: "apts ander", category: "Rent" },
+  { match: "ach apts", category: "Rent" },           
+  { match: "withdrawal ach apts", category: "Rent" },
   { match: "quantum fiber", category: "Bills & Utilities" }, // internet
   { match: "dept education", category: "Loans" },            // student loans
   { match: "chase credit crd", category: "Credit Card Payments" },
@@ -46,6 +48,8 @@ function guessCategory(desc = "") {
   if (
     d.includes("apts anderson") ||
     d.includes("apts ander") ||
+    d.includes(" apts ") ||     
+    d.startsWith("apts ") ||
     d.includes("apartment") ||
     d.includes(" rent") ||
     d.startsWith("rent") ||
