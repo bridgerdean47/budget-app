@@ -269,16 +269,20 @@ useEffect(() => {
       {/* MAIN CONTENT */}
       <main className="max-w-6xl mx-auto px-6 py-10">
         {activeTab === "dashboard" && (
-          <DashboardPage
-            theme={theme}
-            cardClass={cardClass}
-            monthSummary={monthSummary}
-            selectedMonth={selectedMonth}
-            onMonthChange={setSelectedMonth}
-            budgetTotals={budgetTotals}
-            goals={goals}
-          />
-        )}
+  <DashboardPage
+    theme={theme}
+    cardClass={cardClass}
+    monthSummary={monthSummary}
+    selectedMonth={selectedMonth}
+    onMonthChange={setSelectedMonth}
+    budgetTotals={budgetTotals}
+    goals={goals}
+    transactions={transactions}                     // NEW
+    onAddTransactions={(newItems) =>               // NEW
+      setTransactions((prev) => [...prev, ...newItems])
+    }
+  />
+)}
 
         {activeTab === "budget" && (
           <BudgetPage
@@ -324,6 +328,8 @@ function DashboardPage({
   onMonthChange,
   budgetTotals,
   goals,
+  transactions,
+  onAddTransactions,
 }) {
   const allocationPercent =
     monthSummary.income > 0
@@ -359,6 +365,7 @@ function DashboardPage({
         </div>
       </div>
 
+      {/* MONTH SUMMARY */}
       <section className={cardClass}>
         <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-red-400">
           MONTH OVERVIEW
@@ -410,24 +417,210 @@ function DashboardPage({
         </div>
       </section>
 
+      {/* CASH FLOW BAR */}
       <CashFlowBar
         theme={theme}
         income={monthSummary.income}
         spending={totalSpending}
       />
 
+      {/* GOALS */}
       <section>
         <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-red-400">
           GOALS
         </h3>
 
         <div className="grid gap-4 md:grid-cols-2">
-              {(goals || []).map((goal) => (
-      <GoalCard key={goal.id} goal={goal} theme={theme} />
-    ))}
+          {(goals || []).map((goal) => (
+            <GoalCard key={goal.id} goal={goal} theme={theme} />
+          ))}
         </div>
       </section>
+
+      {/* MINI TRANSACTIONS WIDGET */}
+      <MiniTransactionsWidget
+        cardClass={cardClass}
+        transactions={transactions}
+        onAddTransactions={onAddTransactions}
+      />
     </div>
+  );
+}
+
+function MiniTransactionsWidget({ cardClass, transactions, onAddTransactions }) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const fileInputRef = useRef(null);
+
+  const handleFileSelected = (file) => {
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setImportMessage("Please choose a .csv file.");
+      return;
+    }
+
+    setImportMessage(`Reading ${file.name}...`);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const parsed = parseCsv(text, transactions.length);
+      if (!parsed.length) {
+        setImportMessage("No valid rows found in CSV.");
+      } else {
+        onAddTransactions(parsed);
+        setImportMessage(
+          `Imported ${parsed.length} transactions from ${file.name}.`
+        );
+      }
+    };
+    reader.onerror = () => {
+      setImportMessage("Error reading file.");
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (!droppedFile) return;
+
+    handleFileSelected(droppedFile);
+  };
+
+  const sortedTransactions = useMemo(() => {
+    const data = [...transactions];
+    data.sort((a, b) => {
+      const da = a.date ? new Date(a.date) : new Date(0);
+      const db = b.date ? new Date(b.date) : new Date(0);
+      return db - da; // newest first
+    });
+    return data;
+  }, [transactions]);
+
+  return (
+    <section className={cardClass}>
+      <h3 className="text-xs font-semibold tracking-[0.28em] text-red-400 mb-3">
+        QUICK IMPORT & RECENT TRANSACTIONS
+      </h3>
+
+      {/* Drag/drop area */}
+      <div className="mb-4 text-xs">
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={
+            "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-4 cursor-pointer transition " +
+            (isDragging
+              ? "border-red-400 bg-red-500/10"
+              : "border-red-700 bg-black/40 hover:border-red-500 hover:bg-red-500/5")
+          }
+        >
+          <p className="text-gray-200 font-medium mb-1">
+            Drag &amp; drop a CSV file here
+          </p>
+          <p className="text-gray-400">
+            or <span className="text-red-300 underline">click to browse</span>
+          </p>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => handleFileSelected(e.target.files?.[0] || null)}
+          />
+        </div>
+
+        {importMessage && (
+          <p className="mt-2 text-[0.7rem] text-gray-400">
+            {importMessage}
+          </p>
+        )}
+      </div>
+
+      {/* Scrollable transactions list */}
+      <div className="overflow-x-auto max-h-64 rounded-2xl border border-red-900/60">
+        <table className="w-full text-xs sm:text-sm border-collapse">
+          <thead>
+            <tr className="bg-[#111111] text-gray-200 border-b border-red-900">
+              <th className="px-3 py-2 text-left font-semibold">Date</th>
+              <th className="px-3 py-2 text-left font-semibold">
+                Description
+              </th>
+              <th className="px-3 py-2 text-left font-semibold">Type</th>
+              <th className="px-3 py-2 text-right font-semibold">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedTransactions.map((t) => (
+              <tr
+                key={t.id}
+                className="border-b border-gray-800 last:border-b-0"
+              >
+                <td className="px-3 py-2 text-gray-300 whitespace-nowrap">
+                  {t.date}
+                </td>
+                <td className="px-3 py-2 text-gray-100">
+                  {t.description}
+                </td>
+                <td
+                  className={
+                    "px-3 py-2 whitespace-nowrap " +
+                    (t.type === "income"
+                      ? "text-green-400"
+                      : t.type === "payment"
+                      ? "text-yellow-300"
+                      : t.type === "transfer"
+                      ? "text-blue-400"
+                      : "text-red-400")
+                  }
+                >
+                  {t.type === "income"
+                    ? "Income"
+                    : t.type === "payment"
+                    ? "Payment"
+                    : t.type === "transfer"
+                    ? "Transfer"
+                    : "Expense"}
+                </td>
+                <td className="px-3 py-2 text-right text-gray-100">
+                  ${t.amount.toFixed(2)}
+                </td>
+              </tr>
+            ))}
+            {sortedTransactions.length === 0 && (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-3 py-4 text-center text-gray-500"
+                >
+                  No transactions yet. Import a CSV to see them here.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
