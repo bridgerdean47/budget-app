@@ -24,8 +24,8 @@ export default function BudgetPage({ cardClass, monthSummary, budget, setBudget,
 
   const plannedLeftAfterBills = totalIncome - totalFixed;
   const actualIncome = monthSummary.income;
-  const actualSpending = monthSummary.expenses + monthSummary.payments;
-  const estimatedSavings = totalIncome - totalFixed - actualSpending;
+  const actualSpending = monthSummary.expenses;
+  const estimatedSavings = actualIncome - actualSpending;
 
   const handleAddItem = (listKey) => {
     setBudget((prev) => {
@@ -89,7 +89,7 @@ export default function BudgetPage({ cardClass, monthSummary, budget, setBudget,
 
           <div className="space-y-1">
             <p className="text-[0.7rem] tracking-[0.16em] text-gray-400 uppercase">
-              Bills (Fixed + Variable)
+              Planned Bills
             </p>
             <p className="text-lg font-semibold text-red-400">
               {formatCurrency(totalFixed + totalVariable)}
@@ -127,13 +127,13 @@ export default function BudgetPage({ cardClass, monthSummary, budget, setBudget,
 
           <div className="space-y-1">
             <p className="text-[0.7rem] tracking-[0.16em] text-gray-400 uppercase">
-              Actual Spending + Payments
+              Actual Spending
             </p>
             <p className="text-lg font-semibold text-red-400">
               {formatCurrency(actualSpending)}
             </p>
             <p className="text-[0.7rem] text-gray-500">
-              Expenses plus payments this month.
+              Expenses this month.
             </p>
           </div>
 
@@ -145,7 +145,7 @@ export default function BudgetPage({ cardClass, monthSummary, budget, setBudget,
               {formatCurrency(estimatedSavings)}
             </p>
             <p className="text-[0.7rem] text-gray-500">
-              Planned income − bills − actual spending.
+              Actual income − actual spending.
             </p>
           </div>
         </div>

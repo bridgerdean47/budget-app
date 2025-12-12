@@ -313,7 +313,7 @@ const tabs = [
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-xs font-semibold tracking-[0.25em] text-red-400">
-              B&M BUDGET
+              BudgetR
             </h1>
           </div>
 
