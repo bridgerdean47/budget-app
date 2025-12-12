@@ -1,23 +1,26 @@
-import { useState, useEffect, useRef } from "react";
+// src/App.jsx
+import { useEffect, useMemo, useRef, useState } from "react";
 import DashboardPage from "./pages/DashboardPage.jsx";
-import BudgetPage from "./pages/BudgetPage.jsx";
 import TransactionsPage from "./pages/TransactionsPage.jsx";
+import BudgetPage from "./pages/BudgetPage.jsx";
 import GoalsPage from "./pages/GoalsPage.jsx";
 import ReportsPage from "./pages/ReportsPage.jsx";
-import logo from "./assets/logo.png";
 import LoginPage from "./pages/LoginPage.jsx";
+import logo from "./assets/logo.png";
+
 import { auth, db } from "./lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
+/* -----------------------------
+   Blank defaults
+------------------------------ */
+const blankBudget = { monthLabel: "", income: [], fixed: [], variable: [] };
 const blankGoals = [];
-const blankBudget = {
-  monthLabel: "",
-  income: [],
-  fixed: [],
-  variable: [],
-};
 
+/* -----------------------------
+   Helpers
+------------------------------ */
 function getBudgetTotals(budget) {
   const sum = (arr) =>
     (arr || []).reduce((s, item) => s + (Number(item.amount) || 0), 0);
@@ -30,112 +33,101 @@ function getBudgetTotals(budget) {
   return { totalIncome, totalFixed, totalVariable, remainingForGoals };
 }
 
-// Turn a date string into a "YYYY-MM" key
 function getMonthKeyFromDate(dateStr) {
   if (!dateStr) return null;
 
-  if (/^\d{4}-\d{2}/.test(dateStr)) {
-    return dateStr.slice(0, 7); // "YYYY-MM"
-  }
+  // "YYYY-MM-DD" or "YYYY-MM"
+  if (/^\d{4}-\d{2}/.test(dateStr)) return dateStr.slice(0, 7);
 
-  const m = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
-  if (m) {
-    let [_, mm, dd, yy] = m;
-    mm = mm.padStart(2, "0");
-    let year = yy.length === 2 ? `20${yy}` : yy;
-    return `${year}-${mm}`;
-  }
+  // "MM/DD/YYYY" or "MM-DD-YY"
+  const m = String(dateStr).match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  if (!m) return null;
 
-  return null;
+  let [, mm, , yy] = m;
+  mm = mm.padStart(2, "0");
+  const year = yy.length === 2 ? `20${yy}` : yy;
+  return `${year}-${mm}`;
 }
 
 function formatMonthLabel(key) {
   if (key === "all") return "All Months";
-  const [year, month] = key.split("-");
-  const names = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
+  const [year, month] = String(key).split("-");
+  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const idx = parseInt(month, 10) - 1;
   if (Number.isNaN(idx) || idx < 0 || idx > 11) return key;
   return `${names[idx]} ${year}`;
 }
 
+function genId() {
+  return `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+}
+
+/* -----------------------------
+   App
+------------------------------ */
 export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [theme, setTheme] = useState("dark");
+  const [theme] = useState("dark");
+
   const [transactions, setTransactions] = useState([]);
+  const [imports, setImports] = useState([]);
+
+  const [goals, setGoals] = useState(blankGoals);
+  const [budget, setBudget] = useState(blankBudget);
+
   const [selectedMonth, setSelectedMonth] = useState("all");
+
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
 
-  const [goals, setGoals] = useState(blankGoals);
-  const [budget, setBudget] = useState(blankBudget);
-  const [imports, setImports] = useState([]);
-  // Debounce timer for Firebase writes
+  const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved | error
+  const [lastSavedAt, setLastSavedAt] = useState(null); // Date | null
+
   const saveTimerRef = useRef(null);
   const initialLoadRef = useRef(false);
 
-  const budgetTotals = getBudgetTotals(budget);
+  const budgetTotals = useMemo(() => getBudgetTotals(budget), [budget]);
 
-  /* ---------- Goals helpers ---------- */
-
+  /* -----------------------------
+     Goals helpers
+  ------------------------------ */
   const handleAddGoal = () => {
     setGoals((prev) => [
       ...prev,
-      {
-        id: Date.now() + Math.floor(Math.random() * 1000),
-        label: "New goal",
-        code: `G${prev.length + 1}`,
-        planPerMonth: 0,
-        current: 0,
-        target: 0,
-      },
+      { id: genId(), label: "New goal", code: `G${prev.length + 1}`, planPerMonth: 0, current: 0, target: 0 },
     ]);
   };
 
   const handleUpdateGoal = (id, changes) => {
-    setGoals((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, ...changes } : g))
-    );
+    setGoals((prev) => prev.map((g) => (String(g.id) === String(id) ? { ...g, ...changes } : g)));
   };
 
   const handleDeleteGoal = (id) => {
-    setGoals((prev) => prev.filter((g) => g.id !== id));
+    setGoals((prev) => prev.filter((g) => String(g.id) !== String(id)));
   };
 
-  // Allow positive or negative contributions; clamp at 0
+  // allow +/- contributions; clamp at 0
   const handleContributeGoal = (id, amount) => {
     const amt = Number(amount);
     if (!Number.isFinite(amt) || amt === 0) return;
 
     setGoals((prev) =>
       prev.map((g) => {
-        if (g.id !== id) return g;
+        if (String(g.id) !== String(id)) return g;
         const next = (Number(g.current) || 0) + amt;
         return { ...g, current: Math.max(0, next) };
       })
     );
   };
 
-  /* ---------- Savings auto-apply (Category -> Savings goal) ---------- */
-
+  /* -----------------------------
+     Savings auto-apply
+  ------------------------------ */
   const SAVINGS_CATEGORY = "To Savings";
   const SAVINGS_GOAL_LABEL = "Savings";
   const SAVINGS_GOAL_CODE = "SV";
 
-  // Apply a delta to the Savings goal (creates it if missing)
   const applyToSavingsGoal = (delta, forcedGoalId) => {
     const d = Number(delta) || 0;
     if (!Number.isFinite(d) || d === 0) return;
@@ -143,118 +135,91 @@ export default function App() {
     setGoals((prev) => {
       const idx = prev.findIndex(
         (g) =>
-          g.id === forcedGoalId ||
+          String(g.id) === String(forcedGoalId) ||
           String(g.code || "").toUpperCase() === SAVINGS_GOAL_CODE ||
-          String(g.label || "").toLowerCase() ===
-            SAVINGS_GOAL_LABEL.toLowerCase()
+          String(g.label || "").toLowerCase() === SAVINGS_GOAL_LABEL.toLowerCase()
       );
 
-      // Create if missing
       if (idx === -1) {
-        const id =
-          forcedGoalId ?? Date.now() + Math.floor(Math.random() * 1000);
-
+        const id = forcedGoalId ?? genId();
         return [
           ...prev,
-          {
-            id,
-            label: SAVINGS_GOAL_LABEL,
-            code: SAVINGS_GOAL_CODE,
-            planPerMonth: 0,
-            current: Math.max(0, d),
-            target: 0,
-          },
+          { id, label: SAVINGS_GOAL_LABEL, code: SAVINGS_GOAL_CODE, planPerMonth: 0, current: Math.max(0, d), target: 0 },
         ];
       }
 
       const g = prev[idx];
       const nextCurrent = Math.max(0, (Number(g.current) || 0) + d);
       const updated = { ...g, current: nextCurrent };
-
       return [...prev.slice(0, idx), updated, ...prev.slice(idx + 1)];
     });
   };
 
-  /* ---------- Transaction handlers (unique IDs + goal sync) ---------- */
-
+  /* -----------------------------
+     Transaction handlers
+  ------------------------------ */
   const handleAddTransactions = (newItems, batchMeta) => {
     const items = Array.isArray(newItems) ? newItems : [];
+    const batchId = batchMeta?.id ?? null;
 
     setTransactions((prev) => {
       const used = new Set(prev.map((t) => String(t.id)));
 
       const processed = items.map((tx, idx) => {
-        // Ensure unique id
         let id = tx?.id;
-        if (id === undefined || id === null || id === "") {
-          id = `${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
-        }
+        if (id === undefined || id === null || id === "") id = `${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
         id = String(id);
 
-        while (used.has(id)) {
-          id = `${id}-${Math.floor(Math.random() * 1000)}`;
-        }
+        while (used.has(id)) id = `${id}-${Math.floor(Math.random() * 1000)}`;
         used.add(id);
 
         const category = (tx?.category || "").trim();
 
-        // Savings auto-apply
+        // Savings auto-apply on import/add
         if (category === SAVINGS_CATEGORY) {
           const delta = Number(tx.amount) || 0;
           if (Number.isFinite(delta) && delta !== 0) {
-            const goalId =
-              tx?.goalApplied?.goalId ??
-              Date.now() + Math.floor(Math.random() * 1000);
-
+            const goalId = tx?.goalApplied?.goalId ?? genId();
             applyToSavingsGoal(delta, goalId);
 
             return {
-  ...tx,
-  id,
-  importId: batchMeta?.id ?? tx.importId ?? null,
-  goalApplied: { goalId, delta },
-};
-
+              ...tx,
+              id,
+              importId: batchId ?? tx.importId ?? null,
+              goalApplied: { goalId, delta },
+            };
           }
         }
 
-        return { ...tx, id, importId: batchMeta?.id ?? tx.importId ?? null };
+        return { ...tx, id, importId: batchId ?? tx.importId ?? null };
       });
 
       return [...prev, ...processed];
     });
-    if (batchMeta?.id) {
-  setImports((prev) => [batchMeta, ...prev]);
-}
 
+    if (batchMeta?.id) {
+      setImports((prev) => [batchMeta, ...prev]);
+    }
   };
 
   const handleUpdateTransaction = (updatedTx) => {
     setTransactions((prev) => {
-      const existing = prev.find(
-        (t) => String(t.id) === String(updatedTx.id)
-      );
+      const id = String(updatedTx?.id ?? "");
+      const existing = prev.find((t) => String(t.id) === id);
 
-      // Undo old applied delta if it existed
+      // undo previous delta (if any)
       if (existing?.goalApplied) {
-        applyToSavingsGoal(
-          -Number(existing.goalApplied.delta || 0),
-          existing.goalApplied.goalId
-        );
+        applyToSavingsGoal(-Number(existing.goalApplied.delta || 0), existing.goalApplied.goalId);
       }
 
       const category = (updatedTx?.category || "").trim();
-      let nextTx = { ...updatedTx, id: String(updatedTx.id) };
+      const nextTx = { ...updatedTx, id };
 
-      // Apply new delta if it qualifies
+      // apply new delta (if any)
       if (category === SAVINGS_CATEGORY) {
         const delta = Number(updatedTx.amount) || 0;
         if (Number.isFinite(delta) && delta !== 0) {
-          const goalId =
-            existing?.goalApplied?.goalId ??
-            updatedTx?.goalApplied?.goalId ??
-            Date.now() + Math.floor(Math.random() * 1000);
-
+          const goalId = existing?.goalApplied?.goalId ?? updatedTx?.goalApplied?.goalId ?? genId();
           applyToSavingsGoal(delta, goalId);
           nextTx.goalApplied = { goalId, delta };
         } else {
@@ -264,80 +229,60 @@ export default function App() {
         delete nextTx.goalApplied;
       }
 
-      return prev.map((t) =>
-        String(t.id) === String(nextTx.id) ? nextTx : t
-      );
+      return prev.map((t) => (String(t.id) === id ? nextTx : t));
     });
   };
 
   const handleDeleteTransaction = (id) => {
     setTransactions((prev) => {
       const existing = prev.find((t) => String(t.id) === String(id));
-
       if (existing?.goalApplied) {
-        applyToSavingsGoal(
-          -Number(existing.goalApplied.delta || 0),
-          existing.goalApplied.goalId
-        );
+        applyToSavingsGoal(-Number(existing.goalApplied.delta || 0), existing.goalApplied.goalId);
       }
-
       return prev.filter((t) => String(t.id) !== String(id));
     });
   };
 
-const handleClearTransactions = () => {
-  setTransactions((prev) => {
-    // Undo all applied goal deltas
-    prev.forEach((tx) => {
-      if (tx?.goalApplied) {
-        applyToSavingsGoal(
-          -Number(tx.goalApplied.delta || 0),
-          tx.goalApplied.goalId
-        );
-      }
+  const handleClearTransactions = () => {
+    setTransactions((prev) => {
+      prev.forEach((tx) => {
+        if (tx?.goalApplied) {
+          applyToSavingsGoal(-Number(tx.goalApplied.delta || 0), tx.goalApplied.goalId);
+        }
+      });
+      return [];
     });
-
-    return [];
-  });
-
-  // Clear import history too
-  setImports([]);
-};
-
+    setImports([]);
+  };
 
   const handleDeleteImportBatch = (importId) => {
-  // undo any goalApplied deltas from that batch, then remove the txs
-  setTransactions((prev) => {
-    prev.forEach((tx) => {
-      if (tx?.importId === importId && tx?.goalApplied) {
-        applyToSavingsGoal(
-          -Number(tx.goalApplied.delta || 0),
-          tx.goalApplied.goalId
-        );
-      }
+    setTransactions((prev) => {
+      prev.forEach((tx) => {
+        if (tx?.importId === importId && tx?.goalApplied) {
+          applyToSavingsGoal(-Number(tx.goalApplied.delta || 0), tx.goalApplied.goalId);
+        }
+      });
+      return prev.filter((tx) => tx?.importId !== importId);
     });
+    setImports((prev) => prev.filter((b) => b.id !== importId));
+  };
 
-    return prev.filter((tx) => tx?.importId !== importId);
-  });
-
-  setImports((prev) => prev.filter((b) => b.id !== importId));
-};
-
-
-  /* ---------- Load from cloud when user logs in ---------- */
-
+  /* -----------------------------
+     Auth + Load
+  ------------------------------ */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       setAuthReady(true);
 
       if (!u) {
-        // Logged out -> reset state
         setTransactions([]);
         setBudget(blankBudget);
         setGoals(blankGoals);
+        setImports([]);
         setSelectedMonth("all");
         setDataLoaded(false);
+        setLastSavedAt(null);
         initialLoadRef.current = false;
         return;
       }
@@ -353,6 +298,8 @@ const handleClearTransactions = () => {
           setGoals(Array.isArray(data.goals) ? data.goals : blankGoals);
           setImports(Array.isArray(data.imports) ? data.imports : []);
           setSelectedMonth(data.selectedMonth || "all");
+
+          if (data.updatedAt) setLastSavedAt(new Date(data.updatedAt));
         } else {
           await setDoc(ref, {
             transactions: [],
@@ -366,10 +313,12 @@ const handleClearTransactions = () => {
           setTransactions([]);
           setBudget(blankBudget);
           setGoals(blankGoals);
+          setImports([]);
           setSelectedMonth("all");
+          setLastSavedAt(null);
         }
-      } catch (error) {
-        console.error("Error loading user data:", error);
+      } catch (err) {
+        console.error("Error loading user data:", err);
       } finally {
         setDataLoaded(true);
         initialLoadRef.current = true;
@@ -379,8 +328,9 @@ const handleClearTransactions = () => {
     return () => unsub();
   }, []);
 
-  /* ---------- Save to cloud (debounced) ---------- */
-
+  /* -----------------------------
+     Save (debounced)
+  ------------------------------ */
   useEffect(() => {
     if (!user || !initialLoadRef.current) return;
 
@@ -388,6 +338,8 @@ const handleClearTransactions = () => {
 
     saveTimerRef.current = setTimeout(async () => {
       try {
+        setSaveStatus("saving");
+
         const ref = doc(db, "users", user.uid);
         await setDoc(
           ref,
@@ -401,9 +353,13 @@ const handleClearTransactions = () => {
           },
           { merge: true }
         );
-        console.log("✅ Saved to cloud");
-      } catch (error) {
-        console.error("Error saving to cloud:", error);
+
+        setLastSavedAt(new Date());
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 1500);
+      } catch (err) {
+        console.error("Error saving to cloud:", err);
+        setSaveStatus("error");
       }
     }, 500);
 
@@ -412,40 +368,45 @@ const handleClearTransactions = () => {
     };
   }, [user, transactions, budget, goals, imports, selectedMonth]);
 
-  /* ---------- Month filtering + summary ---------- */
-
+  /* -----------------------------
+     Month filtering + summary
+  ------------------------------ */
   const filteredTransactions =
     selectedMonth === "all"
       ? transactions
-      : transactions.filter(
-          (t) => getMonthKeyFromDate(t.date) === selectedMonth
-        );
+      : transactions.filter((t) => getMonthKeyFromDate(t.date) === selectedMonth);
 
   const income = filteredTransactions
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-
   const expenses = filteredTransactions
     .filter((t) => t.type === "expense")
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+  const payments = filteredTransactions
+    .filter((t) => t.type === "payment")
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   const transfers = filteredTransactions
     .filter((t) => t.type === "transfer")
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-  const leftover = income - expenses;
+  // dashboard uses this; health score can ignore payments if it wants
+  const leftover = income - expenses - payments;
 
   const monthSummary = {
     monthLabel: formatMonthLabel(selectedMonth),
     income,
     expenses,
+    payments,
     leftover,
     transfers,
   };
 
-  /* ---------- Styles ---------- */
-
+  /* -----------------------------
+     Styles
+  ------------------------------ */
   const appClass = "min-h-screen bg-[#050505] text-gray-100";
   const headerClass =
     "border-b sticky top-0 z-50 backdrop-blur bg-[#050505cc] border-red-900 h-16";
@@ -472,8 +433,9 @@ const handleClearTransactions = () => {
     { id: "reports", label: "Reports" },
   ];
 
-  /* ---------- Loading / Auth gates ---------- */
-
+  /* -----------------------------
+     Loading / Auth gates
+  ------------------------------ */
   if (!authReady) {
     return (
       <div className={appClass}>
@@ -524,16 +486,28 @@ const handleClearTransactions = () => {
     );
   }
 
-  /* ---------- Render ---------- */
-
+  /* -----------------------------
+     Render
+  ------------------------------ */
   return (
     <div className={appClass}>
       <header className={headerClass}>
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+          {/* Left: Logo + Last saved */}
           <div className="flex items-center gap-3">
             <img src={logo} alt="BudgetR logo" className="h-9 w-auto" />
+            <div className="leading-tight">
+              <div className="text-xs text-gray-400">
+                {saveStatus === "saving"
+                  ? "Saving…"
+                  : lastSavedAt
+                  ? `Last saved at ${lastSavedAt.toLocaleTimeString()}`
+                  : "Not saved yet"}
+              </div>
+            </div>
           </div>
 
+          {/* Right: Tabs + logout */}
           <div className="flex items-center gap-4">
             <nav className="flex gap-2 text-sm">
               {tabs.map((t) => (
@@ -547,11 +521,7 @@ const handleClearTransactions = () => {
               ))}
             </nav>
 
-            <button
-              type="button"
-              onClick={() => signOut(auth)}
-              className={navInactive}
-            >
+            <button type="button" onClick={() => signOut(auth)} className={navInactive}>
               Log out
             </button>
           </div>
@@ -579,6 +549,20 @@ const handleClearTransactions = () => {
           />
         )}
 
+        {activeTab === "transactions" && (
+          <TransactionsPage
+            theme={theme}
+            cardClass={cardClass}
+            transactions={transactions}
+            imports={imports}
+            onDeleteImportBatch={handleDeleteImportBatch}
+            onAddTransactions={handleAddTransactions}
+            onUpdateTransaction={handleUpdateTransaction}
+            onDeleteTransaction={handleDeleteTransaction}
+            onClearTransactions={handleClearTransactions}
+          />
+        )}
+
         {activeTab === "budget" && (
           <BudgetPage
             cardClass={cardClass}
@@ -586,20 +570,6 @@ const handleClearTransactions = () => {
             budget={budget}
             setBudget={setBudget}
             budgetTotals={budgetTotals}
-          />
-        )}
-
-        {activeTab === "transactions" && (
-          <TransactionsPage
-            theme={theme}
-            cardClass={cardClass}
-            transactions={transactions}
-            imports={imports}
-onDeleteImportBatch={handleDeleteImportBatch}
-            onAddTransactions={handleAddTransactions}
-            onUpdateTransaction={handleUpdateTransaction}
-            onDeleteTransaction={handleDeleteTransaction}
-            onClearTransactions={handleClearTransactions}
           />
         )}
 
