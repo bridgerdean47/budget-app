@@ -47,10 +47,10 @@ function parseAmount(str) {
   return parseFloat(cleaned);
 }
 
-// ⭐ CENTRALIZED CATEGORY GUESSING - runs for ALL imports
+// ⭐ CENTRALIZED CATEGORY GUESSING - this is the ONLY place categories are assigned
 function guessCategory(desc = "") {
   if (!desc) return "Uncategorized";
-  
+
   const d = desc.toLowerCase();
 
   // 🏠 RENT - HIGHEST PRIORITY (check first!)
@@ -69,9 +69,10 @@ function guessCategory(desc = "") {
     return "Rent";
   }
 
-  // 💳 CREDIT CARD PAYMENTS
+  // 💳 CREDIT CARD PAYMENTS - BEFORE other checks
   if (
     d.includes("chase credit crd") ||
+    d.includes("chase credit card") ||
     d.includes("credit card payment") ||
     d.includes("cc payment") ||
     d.includes("payment thank you")
@@ -80,7 +81,11 @@ function guessCategory(desc = "") {
   }
 
   // 💰 LOANS
-  if (d.includes("dept education") || d.includes("student loan")) {
+  if (
+    d.includes("dept education") ||
+    d.includes("student loan") ||
+    d.includes("loan payment")
+  ) {
     return "Loans";
   }
 
@@ -88,16 +93,26 @@ function guessCategory(desc = "") {
   if (
     d.includes("quantum fiber") ||
     d.includes("internet") ||
-    d.includes("power") ||
+    d.includes("power company") ||
     d.includes("electric") ||
     d.includes("water") ||
-    d.includes("gas & electric")
+    d.includes("gas & electric") ||
+    d.includes("utility")
   ) {
     return "Bills & Utilities";
   }
 
   // 🛒 GROCERIES
-  if (d.includes("walmart") || d.includes("grocery") || d.includes("winco")) {
+  if (
+    d.includes("walmart") ||
+    d.includes("wal-mart") ||
+    d.includes("wal mart") ||
+    d.includes("winco") ||
+    d.includes("grocery") ||
+    d.includes("safeway") ||
+    d.includes("kroger") ||
+    d.includes("albertsons")
+  ) {
     return "Groceries";
   }
 
@@ -109,13 +124,22 @@ function guessCategory(desc = "") {
     d.includes("wendy") ||
     d.includes("subway") ||
     d.includes("restaurant") ||
-    d.includes("cafe")
+    d.includes("cafe") ||
+    d.includes("pizza") ||
+    d.includes("starbucks") ||
+    d.includes("dunkin")
   ) {
     return "Food & Drink";
   }
 
   // ⛽ GAS
-  if (d.includes("shell") || d.includes("chevron") || d.includes("gas ")) {
+  if (
+    d.includes("shell") ||
+    d.includes("chevron") ||
+    d.includes("gas station") ||
+    d.includes("exxon") ||
+    d.includes("bp gas")
+  ) {
     return "Gas";
   }
 
@@ -124,13 +148,21 @@ function guessCategory(desc = "") {
     d.includes("spotify") ||
     d.includes("netflix") ||
     d.includes("hulu") ||
-    d.includes("youtube")
+    d.includes("youtube") ||
+    d.includes("disney+") ||
+    d.includes("hbo") ||
+    d.includes("paramount")
   ) {
     return "Entertainment";
   }
 
   // ✈️ TRAVEL
-  if (d.includes("flight") || d.includes("hotel") || d.includes("airbnb")) {
+  if (
+    d.includes("flight") ||
+    d.includes("hotel") ||
+    d.includes("airbnb") ||
+    d.includes("airline")
+  ) {
     return "Travel";
   }
 
@@ -140,7 +172,12 @@ function guessCategory(desc = "") {
   }
 
   // 🛍️ SHOPPING
-  if (d.includes("amazon") || d.includes("target")) {
+  if (
+    d.includes("amazon") ||
+    d.includes("target") ||
+    d.includes("dollartree") ||
+    d.includes("dollar tree")
+  ) {
     return "Shopping";
   }
 
@@ -150,6 +187,15 @@ function guessCategory(desc = "") {
   }
 
   return "Uncategorized";
+}
+
+// Helper: determine EPAY transfer-like descriptions
+function isEpayTransfer(descLower = "") {
+  return (
+    descLower.includes("type: epay") ||
+    descLower.includes(" epay") ||
+    descLower.includes("withdrawal ach chase credit crd")
+  );
 }
 
 export function parseCsv(text, startId = 0) {
@@ -211,17 +257,33 @@ export function parseCsv(text, startId = 0) {
       const rawAmount = parseAmount(get("amount"));
       if (!isFinite(rawAmount) || rawAmount === 0) continue;
 
+      const lowerDesc = (desc || "").toLowerCase();
+
+      // Pull the category from the CSV if present
+      const csvCategory = (get("category") || "").trim();
+
       let type;
-      const rawType = get("type").toLowerCase();
-      if (rawType === "payment" || rawAmount > 0) {
+      const rawType = (get("type") || "").toLowerCase();
+
+      // EPAY should be TRANSFER
+      if (isEpayTransfer(lowerDesc)) {
+        type = "transfer";
+      } else if (rawType === "payment" || rawAmount > 0) {
         type = "payment";
       } else {
         type = "expense";
       }
 
-      if (desc.toLowerCase().includes("payment thank you")) {
+      // Thank-you stays PAYMENT
+      if (lowerDesc.includes("payment thank you")) {
         type = "payment";
       }
+
+      // Prefer CSV category; fallback to guesser
+      const category =
+        csvCategory && csvCategory.toLowerCase() !== "uncategorized"
+          ? csvCategory
+          : guessCategory(desc);
 
       out.push({
         id: startId + out.length,
@@ -229,7 +291,7 @@ export function parseCsv(text, startId = 0) {
         description: desc,
         amount: Math.abs(rawAmount),
         type,
-        category: guessCategory(desc), // ⭐ Use centralized guesser
+        category,
       });
       continue;
     }
@@ -241,16 +303,19 @@ export function parseCsv(text, startId = 0) {
       const rawAmount = parseAmount(get("amount"));
       if (!isFinite(rawAmount) || rawAmount === 0) continue;
 
-      const lowerDesc = desc.toLowerCase();
+      const lowerDesc = (desc || "").toLowerCase();
       const lowerCat = (get("category") || "").toLowerCase();
 
       let type = "expense";
 
-      // ⭐ CHECK FOR CREDIT CARD PAYMENTS FIRST
-      if (
+      // ⭐ TRANSFER-STYLE CC MOVES FIRST (EPAY)
+      if (isEpayTransfer(lowerDesc)) {
+        type = "transfer";
+      } else if (lowerDesc.includes("payment thank you")) {
+        type = "payment";
+      } else if (
         lowerDesc.includes("chase credit crd") ||
-        lowerDesc.includes("credit card") ||
-        lowerDesc.includes("epay")
+        lowerDesc.includes("credit card")
       ) {
         type = "payment";
       } else if (rawAmount > 0) {
@@ -275,7 +340,7 @@ export function parseCsv(text, startId = 0) {
         description: desc,
         amount: Math.abs(rawAmount),
         type,
-        category: guessCategory(desc), // ⭐ Use centralized guesser
+        category: guessCategory(desc),
       });
       continue;
     }
@@ -287,14 +352,17 @@ export function parseCsv(text, startId = 0) {
       const rawAmount = parseAmount(get("amount"));
       if (!isFinite(rawAmount) || rawAmount === 0) continue;
 
-      const transType = get("transaction type").toLowerCase();
-      const typeField = get("type").toLowerCase();
-      const lowerDesc = desc.toLowerCase();
+      const transType = (get("transaction type") || "").toLowerCase();
+      const typeField = (get("type") || "").toLowerCase();
+      const lowerDesc = (desc || "").toLowerCase();
       const lowerCat = (get("transaction category") || "").toLowerCase();
 
       let type = "expense";
 
-      if (
+      // EPAY should be TRANSFER even here if it appears
+      if (isEpayTransfer(lowerDesc)) {
+        type = "transfer";
+      } else if (
         transType.includes("deposit") ||
         typeField.includes("deposit") ||
         rawAmount > 0
@@ -316,26 +384,30 @@ export function parseCsv(text, startId = 0) {
         description: desc,
         amount: Math.abs(rawAmount),
         type,
-        category: guessCategory(desc), // ⭐ Use centralized guesser
+        category: guessCategory(desc),
       });
       continue;
     }
 
     /* ---------- Generic: Type, Description, Amount, Date ---------- */
     if (isTypeDescAmountDate) {
-      const typeRaw = cells[0]?.trim().toLowerCase();
+      const typeRaw = (cells[0]?.trim() || "").toLowerCase();
       const desc = cells[1]?.trim() || "";
       const rawAmount = parseAmount(cells[2] || "");
       const dateStr = cells[3]?.trim() || "";
       if (!isFinite(rawAmount) || rawAmount === 0) continue;
 
+      const lowerDesc = desc.toLowerCase();
+
       let type = "expense";
-      if (typeRaw === "income") type = "income";
+
+      if (isEpayTransfer(lowerDesc)) type = "transfer";
+      else if (typeRaw === "income") type = "income";
       else if (typeRaw === "payment") type = "payment";
       else if (typeRaw === "transfer") type = "transfer";
       else if (rawAmount > 0) type = "income";
 
-      if (desc.toLowerCase().includes("payment thank you")) {
+      if (lowerDesc.includes("payment thank you")) {
         type = "payment";
       }
 
@@ -345,7 +417,7 @@ export function parseCsv(text, startId = 0) {
         description: desc,
         amount: Math.abs(rawAmount),
         type,
-        category: guessCategory(desc), // ⭐ Use centralized guesser
+        category: guessCategory(desc),
       });
       continue;
     }
@@ -361,11 +433,13 @@ export function parseCsv(text, startId = 0) {
       const d = desc.toLowerCase();
 
       let type;
-      if (
-        d.includes("chase credit crd") ||
+      if (isEpayTransfer(d)) {
+        type = "transfer";
+      } else if (
+        d.includes("payment thank you") ||
         d.includes("credit card payment") ||
         d.includes("cc payment") ||
-        d.includes("epay")
+        d.includes("chase credit crd")
       ) {
         type = "payment";
       } else {
@@ -378,7 +452,7 @@ export function parseCsv(text, startId = 0) {
         description: desc,
         amount: Math.abs(rawAmount),
         type,
-        category: guessCategory(desc), // ⭐ Use centralized guesser
+        category: guessCategory(desc),
       });
       continue;
     }

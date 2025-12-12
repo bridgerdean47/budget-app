@@ -163,17 +163,20 @@ export default function TransactionsPage({
       const parsed = parsedRaw.map((tx) => {
         const desc = (tx.description || "").toLowerCase();
 
-        // ----- TYPE FIX: mark certain expenses as payments -----
-        let type = tx.type || "expense";
-        if (type === "expense") {
-          if (
-            desc.includes("chase credit crd") ||
-            desc.includes("chase credit card") ||
-            desc.includes("payment thank you")
-          ) {
-            type = "payment";
-          }
-        }
+// ----- TYPE FIX: mark certain expenses as payments/transfers -----
+let type = tx.type || "expense";
+
+if (type === "expense") {
+  // EPAY / ACH credit card withdrawal is a TRANSFER (checking -> credit card)
+  if (desc.includes(" epay") || desc.includes("type: epay") || desc.includes("withdrawal ach chase credit crd")) {
+    type = "transfer";
+  }
+  // "Payment Thank You" is a PAYMENT
+  else if (desc.includes("payment thank you")) {
+    type = "payment";
+  }
+}
+
 
         // ----- CATEGORY LOGIC -----
         let category = tx.category || "";
