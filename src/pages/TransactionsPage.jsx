@@ -22,7 +22,8 @@ const CATEGORY_OPTIONS = [
   "Travel",
   "Personal",
   "Cable/Satellite Services",
-  "Everything Else",
+  "To Checking",
+  "To Savings"
 ];
 
 /* -------------------------------------------------
@@ -123,6 +124,34 @@ function guessCategory(desc = "") {
 /* -------------------------------------------------
    COMPONENT
 -------------------------------------------------- */
+// Turn a date string into a "YYYY-MM" key
+function getMonthKeyFromDate(dateStr) {
+  if (!dateStr) return null;
+
+  // Case 1: already like "2025-12-11" or "2025-12"
+  if (/^\d{4}-\d{2}/.test(dateStr)) return dateStr.slice(0, 7);
+
+  // Case 2: formats like "12/11/2025" or "12-11-25"
+  const m = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  if (m) {
+    let [_, mm, dd, yy] = m;
+    mm = mm.padStart(2, "0");
+    const year = yy.length === 2 ? `20${yy}` : yy;
+    return `${year}-${mm}`;
+  }
+
+  return null;
+}
+
+function formatMonthLabel(key) {
+  if (key === "all") return "All months";
+  const [year, month] = key.split("-");
+  const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const idx = parseInt(month, 10) - 1;
+  if (Number.isNaN(idx) || idx < 0 || idx > 11) return key;
+  return `${names[idx]} ${year}`;
+}
+
 export default function TransactionsPage({
   theme,
   cardClass,
@@ -139,6 +168,8 @@ export default function TransactionsPage({
     key: "date",
     direction: "desc",
   });
+  const [selectedMonth, setSelectedMonth] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const fileInputRef = useRef(null);
 
   /* -----------------------------------------------
@@ -242,20 +273,52 @@ if (type === "expense") {
         : { key, direction: "asc" }
     );
   };
+  const monthOptions = useMemo(() => {
+    const set = new Set(
+      (transactions || [])
+        .map((t) => getMonthKeyFromDate(t.date))
+        .filter(Boolean)
+    );
+    const keys = Array.from(set).sort();
+    return ["all", ...keys];
+  }, [transactions]);
 
-  const sortedTransactions = useMemo(() => {
-    const data = [...transactions];
+const sortedTransactions = useMemo(() => {
+  let data = [...transactions];
 
-    if (sortConfig.key === "date") {
-      data.sort((a, b) => {
-        const da = new Date(a.date || 0);
-        const db = new Date(b.date || 0);
-        return sortConfig.direction === "asc" ? da - db : db - da;
-      });
-    }
+  // SORT
+  if (sortConfig.key === "date") {
+    data.sort((a, b) => {
+      const da = new Date(a.date || 0);
+      const db = new Date(b.date || 0);
+      return sortConfig.direction === "asc" ? da - db : db - da;
+    });
+  } else if (sortConfig.key === "type") {
+    // Asc order: Income -> Expense -> Payment -> Transfer
+    const order = { income: 0, expense: 1, payment: 2, transfer: 3 };
 
-    return data;
-  }, [transactions, sortConfig]);
+    data.sort((a, b) => {
+      const aRank = order[a.type] ?? 99;
+      const bRank = order[b.type] ?? 99;
+      return sortConfig.direction === "asc" ? aRank - bRank : bRank - aRank;
+    });
+  }
+
+  // FILTER (month)
+  if (selectedMonth !== "all") {
+    data = data.filter((t) => getMonthKeyFromDate(t.date) === selectedMonth);
+  }
+
+  // FILTER (category)
+  if (categoryFilter !== "all") {
+    data = data.filter(
+      (t) => (t.category || "Uncategorized") === categoryFilter
+    );
+  }
+
+  return data;
+}, [transactions, sortConfig, categoryFilter, selectedMonth]);
+
 
   const renderSortIcon = (key) =>
     sortConfig.key !== key ? (
@@ -331,9 +394,55 @@ if (type === "expense") {
 
       {/* TABLE CARD */}
       <section className={cardClass}>
-        <h3 className="mb-3 text-sm font-medium text-red-300">
-          Imported transactions ({transactions.length})
-        </h3>
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+  {/* Month filter */}
+  <div className="flex items-center gap-2">
+    <span className="text-xs text-gray-400">Month:</span>
+    <select
+      value={selectedMonth}
+      onChange={(e) => setSelectedMonth(e.target.value)}
+      className="bg-[#050505] border border-gray-700 text-xs rounded px-2 py-1 text-gray-200"
+    >
+      {monthOptions.map((key) => (
+        <option key={key} value={key}>
+          {formatMonthLabel(key)}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  {/* Category filter */}
+  <div className="flex items-center gap-2">
+    <span className="text-xs text-gray-400">Category:</span>
+    <select
+      value={categoryFilter}
+      onChange={(e) => setCategoryFilter(e.target.value)}
+      className="bg-[#050505] border border-gray-700 text-xs rounded px-2 py-1 text-gray-200"
+    >
+      <option value="all">All</option>
+      {CATEGORY_OPTIONS.map((cat) => (
+        <option key={cat} value={cat}>
+          {cat}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  {/* Clear */}
+  {(categoryFilter !== "all" || selectedMonth !== "all") && (
+    <button
+      type="button"
+      onClick={() => {
+        setCategoryFilter("all");
+        setSelectedMonth("all");
+      }}
+      className="text-xs text-gray-400 hover:text-gray-200 underline"
+    >
+      Clear filters
+    </button>
+  )}
+</div>
+
 
         <div className="overflow-x-auto rounded-2xl border border-red-900/60">
           <table className="w-full text-sm border-collapse">
@@ -352,7 +461,16 @@ if (type === "expense") {
                 <th className="px-4 py-3 text-left font-semibold">
                   Description
                 </th>
-                <th className="px-4 py-3 text-left font-semibold">Type</th>
+                <th className="px-4 py-3 text-left font-semibold">
+  <button
+    type="button"
+    onClick={() => handleSortClick("type")}
+    className="flex items-center gap-1 select-none"
+  >
+    <span>Type</span>
+    {renderSortIcon("type")}
+  </button>
+</th>
                 <th className="px-4 py-3 text-left font-semibold">Category</th>
                 <th className="px-4 py-3 text-left font-semibold">Amount</th>
                 <th className="px-4 py-3 text-center font-semibold">Del</th>
