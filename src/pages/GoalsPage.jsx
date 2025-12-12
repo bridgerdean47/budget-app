@@ -18,13 +18,16 @@ export default function GoalsPage({
     setAmounts((prev) => ({ ...prev, [id]: value }));
   };
 
-  const handleContribute = (id) => {
-    const raw = amounts[id];
-    const amt = parseFloat(raw);
-    if (!amt || amt <= 0) return;
-    onContributeGoal(id, amt);
-    setAmounts((prev) => ({ ...prev, [id]: "" }));
-  };
+const handleContribute = (id) => {
+  const raw = amounts[id];
+  const amt = Number(raw);
+
+  // allow negative, disallow NaN/Infinity/0
+  if (!Number.isFinite(amt) || amt === 0) return;
+
+  onContributeGoal(id, amt);
+  setAmounts((prev) => ({ ...prev, [id]: "" }));
+};
 
   const handleTargetFocus = (goal) => {
     setTargets((prev) => ({
@@ -159,8 +162,8 @@ export default function GoalsPage({
               <div className="flex items-center gap-2 text-xs">
                 <input
                   type="number"
-                  min="0"
-                  placeholder="Amount"
+                  step="0.01"
+                  placeholder="Amount (use - to subtract)"
                   className="flex-1 rounded-full bg-black border border-gray-700 px-3 py-1.5 text-xs text-gray-100 outline-none focus:border-red-400"
                   value={amounts[goal.id] ?? ""}
                   onChange={(e) => handleChangeAmount(goal.id, e.target.value)}
@@ -170,7 +173,7 @@ export default function GoalsPage({
                   onClick={() => handleContribute(goal.id)}
                   className="px-4 py-1.5 rounded-full border border-red-500 text-xs text-red-200 hover:bg-red-500 hover:text-black transition"
                 >
-                  Contribute
+                  Apply
                 </button>
               </div>
             </section>

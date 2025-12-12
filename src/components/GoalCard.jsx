@@ -1,21 +1,22 @@
 import { useState } from "react";
 
-
-
 export default function GoalCard({ goal, theme, onContribute, onDelete }) {
   const isDark = theme === "dark";
-  const p = Math.min(
-    100,
-    goal.target > 0
-      ? Math.round(((Number(goal.current) || 0) / goal.target) * 100)
-      : 0
-  );
   const [amount, setAmount] = useState("");
+
+  const current = Number(goal.current) || 0;
+  const target = Number(goal.target) || 0;
+
+  const p = Math.min(100, target > 0 ? Math.round((current / target) * 100) : 0);
 
   const handleContributeClick = () => {
     if (!onContribute) return;
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) return;
+
+    const amt = Number(amount);
+
+    // allow negative, disallow NaN/Infinity/0
+    if (!Number.isFinite(amt) || amt === 0) return;
+
     onContribute(amt);
     setAmount("");
   };
@@ -36,16 +37,13 @@ export default function GoalCard({ goal, theme, onContribute, onDelete }) {
           </div>
           <div>
             <h4 className="font-medium text-gray-100">{goal.label}</h4>
-            <p className="text-xs text-gray-400">
-              Plan: ${goal.planPerMonth}/mo
-            </p>
+            <p className="text-xs text-gray-400">Plan: ${goal.planPerMonth}/mo</p>
           </div>
         </div>
 
         <div className="text-right text-sm text-gray-200">
           <p>
-            ${Number(goal.current).toFixed(0)} / $
-            {Number(goal.target).toFixed(0)}
+            ${current.toFixed(0)} / ${target.toFixed(0)}
           </p>
         </div>
       </div>
@@ -65,8 +63,8 @@ export default function GoalCard({ goal, theme, onContribute, onDelete }) {
           <div className="flex flex-1 items-center gap-2">
             <input
               type="number"
-              min="0"
-              placeholder="Amount"
+              step="0.01"
+              placeholder="Amount (use - to subtract)"
               className="flex-1 rounded-full bg-black border border-gray-700 px-3 py-1.5 text-xs text-gray-100 outline-none focus:border-red-400"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
@@ -76,7 +74,7 @@ export default function GoalCard({ goal, theme, onContribute, onDelete }) {
               onClick={handleContributeClick}
               className="px-4 py-1.5 rounded-full border border-red-500 text-xs text-red-200 hover:bg-red-500 hover:text-black transition"
             >
-              Contribute
+              Apply
             </button>
           </div>
 
