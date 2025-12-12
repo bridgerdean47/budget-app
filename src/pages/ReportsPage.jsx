@@ -14,6 +14,7 @@ function formatCurrency(value) {
     maximumFractionDigits: 2,
   });
 }
+
 function CustomTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) return null;
 
@@ -33,11 +34,12 @@ function CustomTooltip({ active, payload }) {
 }
 
 export default function ReportsPage({ cardClass, transactions }) {
-  // Use only expenses + payments for "where money is going"
+  // Use only expenses for "where money is going"
   const expenseTx = (transactions || []).filter(
     (t) => t.type === "expense"
   );
 
+  // Totals per category
   const totalsByCategory = new Map();
   for (const tx of expenseTx) {
     const cat = tx.category || "Uncategorized";
@@ -52,10 +54,7 @@ export default function ReportsPage({ cardClass, transactions }) {
 
   // Base data, sorted largest → smallest
   const baseData = Array.from(totalsByCategory.entries())
-    .map(([name, value]) => ({
-      name,
-      value,
-    }))
+    .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
 
   // Limit legend to top N categories + "Other"
@@ -66,10 +65,7 @@ export default function ReportsPage({ cardClass, transactions }) {
     const top = baseData.slice(0, MAX_LEGEND_ITEMS - 1);
     const rest = baseData.slice(MAX_LEGEND_ITEMS - 1);
     const otherTotal = rest.reduce((s, r) => s + r.value, 0);
-    displayData = [
-      ...top,
-      { name: "Other", value: otherTotal },
-    ];
+    displayData = [...top, { name: "Other", value: otherTotal }];
   }
 
   // Attach percentages
@@ -115,13 +111,13 @@ export default function ReportsPage({ cardClass, transactions }) {
 
         {data.length === 0 ? (
           <p className="text-sm text-gray-400">
-            No expenses yet for this period. Add some transactions to see
-            a breakdown.
+            No expenses yet for this period. Add some transactions to
+            see a breakdown.
           </p>
         ) : (
           <div className="grid gap-8 lg:grid-cols-2 items-center">
             {/* Donut chart */}
-            <div className="h-72">
+            <div className="relative h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -139,18 +135,18 @@ export default function ReportsPage({ cardClass, transactions }) {
                       />
                     ))}
                   </Pie>
-<Tooltip
-  content={<CustomTooltip />}
-  wrapperStyle={{ pointerEvents: "none" }}
-/>
 
+                  <Tooltip
+                    content={<CustomTooltip />}
+                    wrapperStyle={{ pointerEvents: "none" }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
 
-              {/* Center total */}
-              <div className="mt-4 text-center">
+              {/* Center total INSIDE the donut */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <div className="text-sm text-gray-400">Total spent</div>
-                <div className="text-xl font-semibold text-gray-100">
+                <div className="text-2xl font-semibold text-gray-100">
                   {formatCurrency(totalSpent)}
                 </div>
               </div>
@@ -163,9 +159,9 @@ export default function ReportsPage({ cardClass, transactions }) {
                   key={row.name}
                   className="flex items-center justify-between gap-3"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <span
-                      className="inline-block h-3 w-3 rounded-full"
+                      className="inline-block h-3 w-3 rounded-full shrink-0"
                       style={{
                         backgroundColor: COLORS[i % COLORS.length],
                       }}
@@ -174,6 +170,7 @@ export default function ReportsPage({ cardClass, transactions }) {
                       {row.name}
                     </span>
                   </div>
+
                   <div className="text-right shrink-0">
                     <div className="text-gray-100">
                       {formatCurrency(row.value)}
