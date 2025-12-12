@@ -1,3 +1,4 @@
+// src/pages/TransactionsPage.jsx
 import { useState, useMemo, useRef } from "react";
 import { parseCsv } from "../lib/csv";
 
@@ -23,7 +24,7 @@ const CATEGORY_OPTIONS = [
   "Personal",
   "Cable/Satellite Services",
   "To Checking",
-  "To Savings"
+  "To Savings",
 ];
 
 /* -------------------------------------------------
@@ -32,10 +33,10 @@ const CATEGORY_OPTIONS = [
 const MERCHANT_CATEGORY_RULES = [
   { match: "apts anderson", category: "Rent" },
   { match: "apts ander", category: "Rent" },
-  { match: "ach apts", category: "Rent" },           
+  { match: "ach apts", category: "Rent" },
   { match: "withdrawal ach apts", category: "Rent" },
   { match: "quantum fiber", category: "Bills & Utilities" }, // internet
-  { match: "dept education", category: "Loans" },            // student loans
+  { match: "dept education", category: "Loans" }, // student loans
   { match: "chase credit crd", category: "Credit Card Payments" },
 ];
 
@@ -49,7 +50,7 @@ function guessCategory(desc = "") {
   if (
     d.includes("apts anderson") ||
     d.includes("apts ander") ||
-    d.includes(" apts ") ||     
+    d.includes(" apts ") ||
     d.startsWith("apts ") ||
     d.includes("apartment") ||
     d.includes(" rent") ||
@@ -122,16 +123,13 @@ function guessCategory(desc = "") {
 }
 
 /* -------------------------------------------------
-   COMPONENT
+   DATE HELPERS
 -------------------------------------------------- */
-// Turn a date string into a "YYYY-MM" key
 function getMonthKeyFromDate(dateStr) {
   if (!dateStr) return null;
 
-  // Case 1: already like "2025-12-11" or "2025-12"
   if (/^\d{4}-\d{2}/.test(dateStr)) return dateStr.slice(0, 7);
 
-  // Case 2: formats like "12/11/2025" or "12-11-25"
   const m = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
   if (m) {
     let [_, mm, dd, yy] = m;
@@ -146,16 +144,34 @@ function getMonthKeyFromDate(dateStr) {
 function formatMonthLabel(key) {
   if (key === "all") return "All months";
   const [year, month] = key.split("-");
-  const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const names = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const idx = parseInt(month, 10) - 1;
   if (Number.isNaN(idx) || idx < 0 || idx > 11) return key;
   return `${names[idx]} ${year}`;
 }
 
+/* -------------------------------------------------
+   COMPONENT
+-------------------------------------------------- */
 export default function TransactionsPage({
   theme,
   cardClass,
   transactions,
+  imports,
+  onDeleteImportBatch,
   onAddTransactions,
   onUpdateTransaction,
   onDeleteTransaction,
@@ -164,131 +180,62 @@ export default function TransactionsPage({
   const [editing, setEditing] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [importMessage, setImportMessage] = useState("");
-  const [sortConfig, setSortConfig] = useState({
-    key: "date",
-    direction: "desc",
-  });
+  const [sortConfig, setSortConfig] = useState({ key: "date", direction: "desc" });
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const fileInputRef = useRef(null);
 
   /* -----------------------------------------------
-     CSV IMPORT
+     CSV IMPORT (MULTI-FILE) + BATCH META
   -------------------------------------------------- */
-  const handleFilesSelected = async (fileList) => {
-  const files = Array.from(fileList || []);
-  if (!files.length) return;
-
-  // quick validation
-  const bad = files.find((f) => !f.name.toLowerCase().endsWith(".csv"));
-  if (bad) {
-    setImportMessage("Please choose only .csv files.");
-    return;
-  }
-
-  setImportMessage(`Reading ${files.length} file(s)...`);
-
-  const allParsed = [];
-
-  for (const file of files) {
-    // read file -> text
-    const text = await new Promise((resolve, reject) => {
+  const readFileText = (file) =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target.result);
       reader.onerror = reject;
       reader.readAsText(file);
     });
 
-    const parsedRaw = parseCsv(text, transactions.length + allParsed.length);
+  const handleFilesSelected = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
 
-    const parsed = parsedRaw.map((tx) => {
-      const desc = (tx.description || "").toLowerCase();
-
-      // ----- TYPE FIX: mark certain expenses as payments/transfers -----
-      let type = tx.type || "expense";
-
-      if (type === "expense") {
-        if (
-          desc.includes(" epay") ||
-          desc.includes("type: epay") ||
-          desc.includes("withdrawal ach chase credit crd")
-        ) {
-          type = "transfer";
-        } else if (desc.includes("payment thank you")) {
-          type = "payment";
-        }
-      }
-
-      // ----- CATEGORY LOGIC -----
-      let category = tx.category || "";
-      const guessed = guessCategory(tx.description);
-
-      if (guessed === "Rent") {
-        category = "Rent";
-      } else if (!category || category.toLowerCase() === "uncategorized") {
-        category = guessed || "Uncategorized";
-      }
-
-      return {
-        ...tx,
-        type,
-        category,
-      };
-    });
-
-    allParsed.push(...parsed);
-  }
-
-  if (!allParsed.length) {
-    setImportMessage("No valid rows found in selected CSV files.");
-  } else {
-    onAddTransactions(allParsed);
-    setImportMessage(`Imported ${allParsed.length} transactions from ${files.length} file(s).`);
-  }
-
-  // allow re-selecting the same files again
-  if (fileInputRef.current) fileInputRef.current.value = "";
-};
-
-  const handleFileSelected = (file) => {
-    if (!file) return;
-
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setImportMessage("Please choose a .csv file.");
+    const bad = files.find((f) => !f.name.toLowerCase().endsWith(".csv"));
+    if (bad) {
+      setImportMessage("Please choose only .csv files.");
       return;
     }
 
-    setImportMessage(`Reading ${file.name}...`);
+    setImportMessage(`Reading ${files.length} file(s)...`);
 
-    const reader = new FileReader();
+    const allParsed = [];
 
-    reader.onload = (e) => {
-      const text = e.target.result;
-      const parsedRaw = parseCsv(text, transactions.length);
+    for (const file of files) {
+      const text = await readFileText(file);
+      const parsedRaw = parseCsv(text, transactions.length + allParsed.length);
 
       const parsed = parsedRaw.map((tx) => {
         const desc = (tx.description || "").toLowerCase();
 
-// ----- TYPE FIX: mark certain expenses as payments/transfers -----
-let type = tx.type || "expense";
+        // ----- TYPE FIX -----
+        let type = tx.type || "expense";
 
-if (type === "expense") {
-  // EPAY / ACH credit card withdrawal is a TRANSFER (checking -> credit card)
-  if (desc.includes(" epay") || desc.includes("type: epay") || desc.includes("withdrawal ach chase credit crd")) {
-    type = "transfer";
-  }
-  // "Payment Thank You" is a PAYMENT
-  else if (desc.includes("payment thank you")) {
-    type = "payment";
-  }
-}
-
+        if (type === "expense") {
+          if (
+            desc.includes(" epay") ||
+            desc.includes("type: epay") ||
+            desc.includes("withdrawal ach chase credit crd")
+          ) {
+            type = "transfer";
+          } else if (desc.includes("payment thank you")) {
+            type = "payment";
+          }
+        }
 
         // ----- CATEGORY LOGIC -----
         let category = tx.category || "";
         const guessed = guessCategory(tx.description);
 
-        // Force Rent when guessed as Rent
         if (guessed === "Rent") {
           category = "Rent";
         } else if (!category || category.toLowerCase() === "uncategorized") {
@@ -302,21 +249,31 @@ if (type === "expense") {
         };
       });
 
-      if (!parsed.length) {
-        setImportMessage("No valid rows found in CSV.");
-      } else {
-        onAddTransactions(parsed);
-        setImportMessage(
-          `Imported ${parsed.length} transactions from ${file.name}.`
-        );
-      }
-    };
+      allParsed.push(...parsed);
+    }
 
-    reader.onerror = () => {
-      setImportMessage("Error reading file.");
-    };
+    if (!allParsed.length) {
+      setImportMessage("No valid rows found in selected CSV files.");
+    } else {
+      const batchId = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const batchMeta = {
+        id: batchId,
+        importedAt: Date.now(),
+        count: allParsed.length,
+        files: files.map((f) => ({
+          name: f.name,
+          size: f.size,
+          lastModified: f.lastModified,
+        })),
+      };
 
-    reader.readAsText(file);
+      onAddTransactions(allParsed, batchMeta);
+      setImportMessage(
+        `Imported ${allParsed.length} transactions from ${files.length} file(s).`
+      );
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   /* -----------------------------------------------
@@ -327,18 +284,16 @@ if (type === "expense") {
     setIsDragging(true);
   };
 
-  const handleDragLeave = () => {
+  const handleDragLeave = () => setIsDragging(false);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
     setIsDragging(false);
+    handleFilesSelected(e.dataTransfer.files);
   };
 
-const handleDrop = (e) => {
-  e.preventDefault();
-  setIsDragging(false);
-  handleFilesSelected(e.dataTransfer.files);
-};
-
   /* -----------------------------------------------
-     SORTING
+     SORTING + FILTERS
   -------------------------------------------------- */
   const handleSortClick = (key) => {
     setSortConfig((prev) =>
@@ -347,6 +302,7 @@ const handleDrop = (e) => {
         : { key, direction: "asc" }
     );
   };
+
   const monthOptions = useMemo(() => {
     const set = new Set(
       (transactions || [])
@@ -357,42 +313,39 @@ const handleDrop = (e) => {
     return ["all", ...keys];
   }, [transactions]);
 
-const sortedTransactions = useMemo(() => {
-  let data = [...transactions];
+  const sortedTransactions = useMemo(() => {
+    let data = [...(transactions || [])];
 
-  // SORT
-  if (sortConfig.key === "date") {
-    data.sort((a, b) => {
-      const da = new Date(a.date || 0);
-      const db = new Date(b.date || 0);
-      return sortConfig.direction === "asc" ? da - db : db - da;
-    });
-  } else if (sortConfig.key === "type") {
-    // Asc order: Income -> Expense -> Payment -> Transfer
-    const order = { income: 0, expense: 1, payment: 2, transfer: 3 };
+    // SORT
+    if (sortConfig.key === "date") {
+      data.sort((a, b) => {
+        const da = new Date(a.date || 0);
+        const db = new Date(b.date || 0);
+        return sortConfig.direction === "asc" ? da - db : db - da;
+      });
+    } else if (sortConfig.key === "type") {
+      const order = { income: 0, expense: 1, payment: 2, transfer: 3 };
+      data.sort((a, b) => {
+        const aRank = order[a.type] ?? 99;
+        const bRank = order[b.type] ?? 99;
+        return sortConfig.direction === "asc" ? aRank - bRank : bRank - aRank;
+      });
+    }
 
-    data.sort((a, b) => {
-      const aRank = order[a.type] ?? 99;
-      const bRank = order[b.type] ?? 99;
-      return sortConfig.direction === "asc" ? aRank - bRank : bRank - aRank;
-    });
-  }
+    // FILTER (month)
+    if (selectedMonth !== "all") {
+      data = data.filter((t) => getMonthKeyFromDate(t.date) === selectedMonth);
+    }
 
-  // FILTER (month)
-  if (selectedMonth !== "all") {
-    data = data.filter((t) => getMonthKeyFromDate(t.date) === selectedMonth);
-  }
+    // FILTER (category)
+    if (categoryFilter !== "all") {
+      data = data.filter(
+        (t) => (t.category || "Uncategorized") === categoryFilter
+      );
+    }
 
-  // FILTER (category)
-  if (categoryFilter !== "all") {
-    data = data.filter(
-      (t) => (t.category || "Uncategorized") === categoryFilter
-    );
-  }
-
-  return data;
-}, [transactions, sortConfig, categoryFilter, selectedMonth]);
-
+    return data;
+  }, [transactions, sortConfig, categoryFilter, selectedMonth]);
 
   const renderSortIcon = (key) =>
     sortConfig.key !== key ? (
@@ -425,6 +378,42 @@ const sortedTransactions = useMemo(() => {
         </button>
       </div>
 
+      {/* Imported CSV history */}
+      {Array.isArray(imports) && imports.length > 0 && (
+        <section className={cardClass}>
+          <h3 className="mb-3 text-xs font-semibold tracking-[0.28em] text-red-400">
+            IMPORT HISTORY
+          </h3>
+
+          <div className="space-y-2 text-sm">
+            {imports.map((b) => (
+              <div
+                key={b.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-gray-700 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="text-gray-200 truncate">
+                    {(b.files || []).map((f) => f.name).join(", ")}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {new Date(b.importedAt).toLocaleString()} • {b.count}{" "}
+                    transactions
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onDeleteImportBatch(b.id)}
+                  className="shrink-0 text-xs px-3 py-1 rounded-full border border-gray-600 text-gray-300 hover:border-red-500 hover:text-red-300"
+                >
+                  Delete import
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* IMPORT CARD */}
       <section className={cardClass}>
         <h3 className="text-xs font-semibold tracking-[0.28em] text-red-400">
@@ -450,14 +439,14 @@ const sortedTransactions = useMemo(() => {
             or <span className="text-red-300 underline">click to browse</span>
           </p>
 
-<input
-  ref={fileInputRef}
-  type="file"
-  accept=".csv"
-  multiple
-  className="hidden"
-  onChange={(e) => handleFilesSelected(e.target.files)}
-/>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFilesSelected(e.target.files)}
+          />
         </div>
 
         {importMessage && (
@@ -468,54 +457,53 @@ const sortedTransactions = useMemo(() => {
       {/* TABLE CARD */}
       <section className={cardClass}>
         <div className="mb-3 flex flex-wrap items-center gap-3">
-  {/* Month filter */}
-  <div className="flex items-center gap-2">
-    <span className="text-xs text-gray-400">Month:</span>
-    <select
-      value={selectedMonth}
-      onChange={(e) => setSelectedMonth(e.target.value)}
-      className="bg-[#050505] border border-gray-700 text-xs rounded px-2 py-1 text-gray-200"
-    >
-      {monthOptions.map((key) => (
-        <option key={key} value={key}>
-          {formatMonthLabel(key)}
-        </option>
-      ))}
-    </select>
-  </div>
+          {/* Month filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Month:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-[#050505] border border-gray-700 text-xs rounded px-2 py-1 text-gray-200"
+            >
+              {monthOptions.map((key) => (
+                <option key={key} value={key}>
+                  {formatMonthLabel(key)}
+                </option>
+              ))}
+            </select>
+          </div>
 
-  {/* Category filter */}
-  <div className="flex items-center gap-2">
-    <span className="text-xs text-gray-400">Category:</span>
-    <select
-      value={categoryFilter}
-      onChange={(e) => setCategoryFilter(e.target.value)}
-      className="bg-[#050505] border border-gray-700 text-xs rounded px-2 py-1 text-gray-200"
-    >
-      <option value="all">All</option>
-      {CATEGORY_OPTIONS.map((cat) => (
-        <option key={cat} value={cat}>
-          {cat}
-        </option>
-      ))}
-    </select>
-  </div>
+          {/* Category filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Category:</span>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="bg-[#050505] border border-gray-700 text-xs rounded px-2 py-1 text-gray-200"
+            >
+              <option value="all">All</option>
+              {CATEGORY_OPTIONS.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
 
-  {/* Clear */}
-  {(categoryFilter !== "all" || selectedMonth !== "all") && (
-    <button
-      type="button"
-      onClick={() => {
-        setCategoryFilter("all");
-        setSelectedMonth("all");
-      }}
-      className="text-xs text-gray-400 hover:text-gray-200 underline"
-    >
-      Clear filters
-    </button>
-  )}
-</div>
-
+          {/* Clear */}
+          {(categoryFilter !== "all" || selectedMonth !== "all") && (
+            <button
+              type="button"
+              onClick={() => {
+                setCategoryFilter("all");
+                setSelectedMonth("all");
+              }}
+              className="text-xs text-gray-400 hover:text-gray-200 underline"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
 
         <div className="overflow-x-auto rounded-2xl border border-red-900/60">
           <table className="w-full text-sm border-collapse">
@@ -535,31 +523,30 @@ const sortedTransactions = useMemo(() => {
                   Description
                 </th>
                 <th className="px-4 py-3 text-left font-semibold">
-  <button
-    type="button"
-    onClick={() => handleSortClick("type")}
-    className="flex items-center gap-1 select-none"
-  >
-    <span>Type</span>
-    {renderSortIcon("type")}
-  </button>
-</th>
+                  <button
+                    type="button"
+                    onClick={() => handleSortClick("type")}
+                    className="flex items-center gap-1 select-none"
+                  >
+                    <span>Type</span>
+                    {renderSortIcon("type")}
+                  </button>
+                </th>
                 <th className="px-4 py-3 text-left font-semibold">Category</th>
                 <th className="px-4 py-3 text-left font-semibold">Amount</th>
                 <th className="px-4 py-3 text-center font-semibold">Del</th>
               </tr>
             </thead>
             <tbody>
-              {sortedTransactions.map((t) => (
+              {sortedTransactions.map((t, i) => (
                 <tr
-                  key={t.id}
+                  key={`${t.id}-${i}`}
                   onClick={() => setEditing(t)}
                   className="cursor-pointer border-b border-gray-800 transition-colors transform hover:bg-[#111111] hover:translate-x-1"
                 >
                   <td className="px-4 py-2 text-gray-200">{t.date}</td>
-                  <td className="px-4 py-2 text-gray-100">
-                    {t.description}
-                  </td>
+                  <td className="px-4 py-2 text-gray-100">{t.description}</td>
+
                   <td
                     className={
                       "px-4 py-2 " +
@@ -603,8 +590,9 @@ const sortedTransactions = useMemo(() => {
                   </td>
 
                   <td className="px-4 py-2 text-gray-100">
-                    ${t.amount.toFixed(2)}
+                    ${(Number(t.amount) || 0).toFixed(2)}
                   </td>
+
                   <td className="px-4 py-2 text-center">
                     <button
                       type="button"
@@ -619,6 +607,17 @@ const sortedTransactions = useMemo(() => {
                   </td>
                 </tr>
               ))}
+
+              {sortedTransactions.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-6 text-center text-gray-500"
+                  >
+                    No transactions yet. Import a CSV to see them here.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

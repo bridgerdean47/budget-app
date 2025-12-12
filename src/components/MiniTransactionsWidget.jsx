@@ -4,9 +4,11 @@ import { parseCsv } from "../lib/csv";
 export default function MiniTransactionsWidget({
   cardClass,
   transactions,
+  imports,
   onAddTransactions,
   onDeleteTransaction,
   onClearTransactions,
+  onDeleteImportBatch,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [importMessage, setImportMessage] = useState("");
@@ -43,7 +45,19 @@ const handleFilesSelected = async (fileList) => {
   if (!allParsed.length) {
     setImportMessage("No valid rows found in selected CSV files.");
   } else {
-    onAddTransactions(allParsed);
+    const batchId = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+const batchMeta = {
+  id: batchId,
+  importedAt: Date.now(),
+  count: allParsed.length,
+  files: files.map((f) => ({
+    name: f.name,
+    size: f.size,
+    lastModified: f.lastModified,
+  })),
+};
+
+onAddTransactions(allParsed, batchMeta);
     setImportMessage(`Imported ${allParsed.length} transactions from ${files.length} file(s).`);
   }
 
@@ -132,6 +146,37 @@ handleFilesSelected(e.dataTransfer.files);
           </p>
         )}
       </div>
+{/* Imported CSV batches */}
+{Array.isArray(imports) && imports.length > 0 && (
+  <div className="mb-4 rounded-2xl border border-red-900/60 bg-black/30 p-3">
+    <div className="mb-2 text-[0.7rem] font-semibold tracking-[0.28em] text-red-400">
+      IMPORT HISTORY
+    </div>
+
+    <div className="space-y-2 text-xs">
+      {imports.slice(0, 8).map((b) => (
+        <div key={b.id} className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-gray-200 truncate">
+              {(b.files || []).map((f) => f.name).join(", ")}
+            </div>
+            <div className="text-[0.7rem] text-gray-400">
+              {new Date(b.importedAt).toLocaleString()} • {b.count} tx
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onDeleteImportBatch?.(b.id)}
+            className="shrink-0 text-[0.7rem] px-3 py-1 rounded-full border border-gray-600 text-gray-300 hover:border-red-500 hover:text-red-300"
+          >
+            Delete import
+          </button>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
       {/* Scrollable transactions list */}
       <div className="overflow-x-auto max-h-64 rounded-2xl border border-red-900/60">

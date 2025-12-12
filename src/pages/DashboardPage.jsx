@@ -66,6 +66,8 @@ export default function DashboardPage({
   goals,
   onContributeGoal,
   transactions,
+  imports,
+  onDeleteImportBatch,
   onAddTransactions,
   onDeleteTransaction,
   onClearTransactions,
@@ -168,7 +170,9 @@ export default function DashboardPage({
         transactions={transactions}
         onAddTransactions={onAddTransactions}
         onDeleteTransaction={onDeleteTransaction}
-onClick={onClearTransactions}
+onClearTransactions={onClearTransactions}
+imports={imports}
+onDeleteImportBatch={onDeleteImportBatch}
       />
     </div>
   );

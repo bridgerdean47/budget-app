@@ -82,7 +82,7 @@ export default function App() {
 
   const [goals, setGoals] = useState(blankGoals);
   const [budget, setBudget] = useState(blankBudget);
-
+  const [imports, setImports] = useState([]);
   // Debounce timer for Firebase writes
   const saveTimerRef = useRef(null);
   const initialLoadRef = useRef(false);
@@ -177,7 +177,7 @@ export default function App() {
 
   /* ---------- Transaction handlers (unique IDs + goal sync) ---------- */
 
-  const handleAddTransactions = (newItems) => {
+  const handleAddTransactions = (newItems, batchMeta) => {
     const items = Array.isArray(newItems) ? newItems : [];
 
     setTransactions((prev) => {
@@ -209,18 +209,24 @@ export default function App() {
             applyToSavingsGoal(delta, goalId);
 
             return {
-              ...tx,
-              id,
-              goalApplied: { goalId, delta },
-            };
+  ...tx,
+  id,
+  importId: batchMeta?.id ?? tx.importId ?? null,
+  goalApplied: { goalId, delta },
+};
+
           }
         }
 
-        return { ...tx, id };
+        return { ...tx, id, importId: batchMeta?.id ?? tx.importId ?? null };
       });
 
       return [...prev, ...processed];
     });
+    if (batchMeta?.id) {
+  setImports((prev) => [batchMeta, ...prev]);
+}
+
   };
 
   const handleUpdateTransaction = (updatedTx) => {
@@ -294,6 +300,25 @@ export default function App() {
     });
   };
 
+  const handleDeleteImportBatch = (importId) => {
+  // undo any goalApplied deltas from that batch, then remove the txs
+  setTransactions((prev) => {
+    prev.forEach((tx) => {
+      if (tx?.importId === importId && tx?.goalApplied) {
+        applyToSavingsGoal(
+          -Number(tx.goalApplied.delta || 0),
+          tx.goalApplied.goalId
+        );
+      }
+    });
+
+    return prev.filter((tx) => tx?.importId !== importId);
+  });
+
+  setImports((prev) => prev.filter((b) => b.id !== importId));
+};
+
+
   /* ---------- Load from cloud when user logs in ---------- */
 
   useEffect(() => {
@@ -321,12 +346,14 @@ export default function App() {
           setTransactions(Array.isArray(data.transactions) ? data.transactions : []);
           setBudget(data.budget || blankBudget);
           setGoals(Array.isArray(data.goals) ? data.goals : blankGoals);
+          setImports(Array.isArray(data.imports) ? data.imports : []);
           setSelectedMonth(data.selectedMonth || "all");
         } else {
           await setDoc(ref, {
             transactions: [],
             budget: blankBudget,
             goals: blankGoals,
+            imports: [],
             selectedMonth: "all",
             updatedAt: Date.now(),
           });
@@ -363,6 +390,7 @@ export default function App() {
             transactions,
             budget,
             goals,
+            imports,
             selectedMonth,
             updatedAt: Date.now(),
           },
@@ -377,7 +405,7 @@ export default function App() {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [user, transactions, budget, goals, selectedMonth]);
+  }, [user, transactions, budget, goals, imports, selectedMonth]);
 
   /* ---------- Month filtering + summary ---------- */
 
@@ -541,6 +569,8 @@ export default function App() {
             goals={goals}
             onContributeGoal={handleContributeGoal}
             transactions={transactions}
+            imports={imports}
+            onDeleteImportBatch={handleDeleteImportBatch}
             onAddTransactions={handleAddTransactions}
             onDeleteTransaction={handleDeleteTransaction}
             onClearTransactions={handleClearTransactions}
@@ -562,6 +592,8 @@ export default function App() {
             theme={theme}
             cardClass={cardClass}
             transactions={transactions}
+            imports={imports}
+onDeleteImportBatch={handleDeleteImportBatch}
             onAddTransactions={handleAddTransactions}
             onUpdateTransaction={handleUpdateTransaction}
             onDeleteTransaction={handleDeleteTransaction}
