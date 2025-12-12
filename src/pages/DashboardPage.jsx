@@ -168,7 +168,7 @@ export default function DashboardPage({
         transactions={transactions}
         onAddTransactions={onAddTransactions}
         onDeleteTransaction={onDeleteTransaction}
-        onClearTransactions={onClearTransactions}
+onClick={onClearTransactions}
       />
     </div>
   );

@@ -148,9 +148,9 @@ handleFilesSelected(e.dataTransfer.files);
             </tr>
           </thead>
           <tbody>
-            {sortedTransactions.map((t) => (
-              <tr
-                key={t.id}
+{sortedTransactions.map((t, i) => (
+  <tr
+    key={`${t.id}-${i}`}
                 className="border-b border-gray-800 last:border-b-0"
               >
                 <td className="px-3 py-2 text-gray-300 whitespace-nowrap">
@@ -180,7 +180,7 @@ handleFilesSelected(e.dataTransfer.files);
                     : "Expense"}
                 </td>
                 <td className="px-3 py-2 text-right text-gray-100">
-                  ${t.amount.toFixed(2)}
+                  ${(Number(t.amount) || 0).toFixed(2)}
                 </td>
                 <td className="px-3 py-2 text-center">
                   <button

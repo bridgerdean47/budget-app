@@ -30,13 +30,45 @@ function getBudgetTotals(budget) {
   return { totalIncome, totalFixed, totalVariable, remainingForGoals };
 }
 
-function formatCurrency(value) {
-  const num = Number(value) || 0;
-  return num.toLocaleString(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  });
+// Turn a date string into a "YYYY-MM" key
+function getMonthKeyFromDate(dateStr) {
+  if (!dateStr) return null;
+
+  if (/^\d{4}-\d{2}/.test(dateStr)) {
+    return dateStr.slice(0, 7); // "YYYY-MM"
+  }
+
+  const m = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  if (m) {
+    let [_, mm, dd, yy] = m;
+    mm = mm.padStart(2, "0");
+    let year = yy.length === 2 ? `20${yy}` : yy;
+    return `${year}-${mm}`;
+  }
+
+  return null;
+}
+
+function formatMonthLabel(key) {
+  if (key === "all") return "All Months";
+  const [year, month] = key.split("-");
+  const names = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const idx = parseInt(month, 10) - 1;
+  if (Number.isNaN(idx) || idx < 0 || idx > 11) return key;
+  return `${names[idx]} ${year}`;
 }
 
 export default function App() {
@@ -46,23 +78,24 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false); // NEW: track if cloud data loaded
+  const [dataLoaded, setDataLoaded] = useState(false);
+
   const [goals, setGoals] = useState(blankGoals);
   const [budget, setBudget] = useState(blankBudget);
-  
-  // NEW: Debounce timer to prevent rapid Firebase writes
+
+  // Debounce timer for Firebase writes
   const saveTimerRef = useRef(null);
   const initialLoadRef = useRef(false);
 
   const budgetTotals = getBudgetTotals(budget);
-  const isDark = theme === "dark";
 
-  // Goal helpers
+  /* ---------- Goals helpers ---------- */
+
   const handleAddGoal = () => {
     setGoals((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: Date.now() + Math.floor(Math.random() * 1000),
         label: "New goal",
         code: `G${prev.length + 1}`,
         planPerMonth: 0,
@@ -82,28 +115,194 @@ export default function App() {
     setGoals((prev) => prev.filter((g) => g.id !== id));
   };
 
-const handleContributeGoal = (id, amount) => {
-  const amt = Number(amount);
-  if (!Number.isFinite(amt) || amt === 0) return;
+  // Allow positive or negative contributions; clamp at 0
+  const handleContributeGoal = (id, amount) => {
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt === 0) return;
 
-  setGoals((prev) =>
-    prev.map((g) => {
-      if (g.id !== id) return g;
+    setGoals((prev) =>
+      prev.map((g) => {
+        if (g.id !== id) return g;
+        const next = (Number(g.current) || 0) + amt;
+        return { ...g, current: Math.max(0, next) };
+      })
+    );
+  };
 
-      const next = (Number(g.current) || 0) + amt;
-      return { ...g, current: Math.max(0, next) };
-    })
-  );
-};
+  /* ---------- Savings auto-apply (Category -> Savings goal) ---------- */
 
-  // Load from cloud when user logs in
+  const SAVINGS_CATEGORY = "To Savings";
+  const SAVINGS_GOAL_LABEL = "Savings";
+  const SAVINGS_GOAL_CODE = "SV";
+
+  // Apply a delta to the Savings goal (creates it if missing)
+  const applyToSavingsGoal = (delta, forcedGoalId) => {
+    const d = Number(delta) || 0;
+    if (!Number.isFinite(d) || d === 0) return;
+
+    setGoals((prev) => {
+      const idx = prev.findIndex(
+        (g) =>
+          g.id === forcedGoalId ||
+          String(g.code || "").toUpperCase() === SAVINGS_GOAL_CODE ||
+          String(g.label || "").toLowerCase() ===
+            SAVINGS_GOAL_LABEL.toLowerCase()
+      );
+
+      // Create if missing
+      if (idx === -1) {
+        const id =
+          forcedGoalId ?? Date.now() + Math.floor(Math.random() * 1000);
+
+        return [
+          ...prev,
+          {
+            id,
+            label: SAVINGS_GOAL_LABEL,
+            code: SAVINGS_GOAL_CODE,
+            planPerMonth: 0,
+            current: Math.max(0, d),
+            target: 0,
+          },
+        ];
+      }
+
+      const g = prev[idx];
+      const nextCurrent = Math.max(0, (Number(g.current) || 0) + d);
+      const updated = { ...g, current: nextCurrent };
+
+      return [...prev.slice(0, idx), updated, ...prev.slice(idx + 1)];
+    });
+  };
+
+  /* ---------- Transaction handlers (unique IDs + goal sync) ---------- */
+
+  const handleAddTransactions = (newItems) => {
+    const items = Array.isArray(newItems) ? newItems : [];
+
+    setTransactions((prev) => {
+      const used = new Set(prev.map((t) => String(t.id)));
+
+      const processed = items.map((tx, idx) => {
+        // Ensure unique id
+        let id = tx?.id;
+        if (id === undefined || id === null || id === "") {
+          id = `${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
+        }
+        id = String(id);
+
+        while (used.has(id)) {
+          id = `${id}-${Math.floor(Math.random() * 1000)}`;
+        }
+        used.add(id);
+
+        const category = (tx?.category || "").trim();
+
+        // Savings auto-apply
+        if (category === SAVINGS_CATEGORY) {
+          const delta = Number(tx.amount) || 0;
+          if (Number.isFinite(delta) && delta !== 0) {
+            const goalId =
+              tx?.goalApplied?.goalId ??
+              Date.now() + Math.floor(Math.random() * 1000);
+
+            applyToSavingsGoal(delta, goalId);
+
+            return {
+              ...tx,
+              id,
+              goalApplied: { goalId, delta },
+            };
+          }
+        }
+
+        return { ...tx, id };
+      });
+
+      return [...prev, ...processed];
+    });
+  };
+
+  const handleUpdateTransaction = (updatedTx) => {
+    setTransactions((prev) => {
+      const existing = prev.find(
+        (t) => String(t.id) === String(updatedTx.id)
+      );
+
+      // Undo old applied delta if it existed
+      if (existing?.goalApplied) {
+        applyToSavingsGoal(
+          -Number(existing.goalApplied.delta || 0),
+          existing.goalApplied.goalId
+        );
+      }
+
+      const category = (updatedTx?.category || "").trim();
+      let nextTx = { ...updatedTx, id: String(updatedTx.id) };
+
+      // Apply new delta if it qualifies
+      if (category === SAVINGS_CATEGORY) {
+        const delta = Number(updatedTx.amount) || 0;
+        if (Number.isFinite(delta) && delta !== 0) {
+          const goalId =
+            existing?.goalApplied?.goalId ??
+            updatedTx?.goalApplied?.goalId ??
+            Date.now() + Math.floor(Math.random() * 1000);
+
+          applyToSavingsGoal(delta, goalId);
+          nextTx.goalApplied = { goalId, delta };
+        } else {
+          delete nextTx.goalApplied;
+        }
+      } else {
+        delete nextTx.goalApplied;
+      }
+
+      return prev.map((t) =>
+        String(t.id) === String(nextTx.id) ? nextTx : t
+      );
+    });
+  };
+
+  const handleDeleteTransaction = (id) => {
+    setTransactions((prev) => {
+      const existing = prev.find((t) => String(t.id) === String(id));
+
+      if (existing?.goalApplied) {
+        applyToSavingsGoal(
+          -Number(existing.goalApplied.delta || 0),
+          existing.goalApplied.goalId
+        );
+      }
+
+      return prev.filter((t) => String(t.id) !== String(id));
+    });
+  };
+
+  const handleClearTransactions = () => {
+    setTransactions((prev) => {
+      prev.forEach((tx) => {
+        if (tx?.goalApplied) {
+          applyToSavingsGoal(
+            -Number(tx.goalApplied.delta || 0),
+            tx.goalApplied.goalId
+          );
+        }
+      });
+
+      return [];
+    });
+  };
+
+  /* ---------- Load from cloud when user logs in ---------- */
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       setAuthReady(true);
 
       if (!u) {
-        // User logged out - reset to blank state
+        // Logged out -> reset state
         setTransactions([]);
         setBudget(blankBudget);
         setGoals(blankGoals);
@@ -113,7 +312,6 @@ const handleContributeGoal = (id, amount) => {
         return;
       }
 
-      // User logged in - load their data
       try {
         const ref = doc(db, "users", u.uid);
         const snap = await getDoc(ref);
@@ -125,7 +323,6 @@ const handleContributeGoal = (id, amount) => {
           setGoals(Array.isArray(data.goals) ? data.goals : blankGoals);
           setSelectedMonth(data.selectedMonth || "all");
         } else {
-          // New user - create blank document
           await setDoc(ref, {
             transactions: [],
             budget: blankBudget,
@@ -150,17 +347,13 @@ const handleContributeGoal = (id, amount) => {
     return () => unsub();
   }, []);
 
-  // Save to cloud with debouncing (prevents rapid writes)
+  /* ---------- Save to cloud (debounced) ---------- */
+
   useEffect(() => {
-    // Don't save during initial load
     if (!user || !initialLoadRef.current) return;
 
-    // Clear existing timer
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
-    // Debounce: wait 500ms after last change before saving
     saveTimerRef.current = setTimeout(async () => {
       try {
         const ref = doc(db, "users", user.uid);
@@ -182,27 +375,11 @@ const handleContributeGoal = (id, amount) => {
     }, 500);
 
     return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-      }
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [user, transactions, budget, goals, selectedMonth]);
 
   /* ---------- Month filtering + summary ---------- */
-  function getMonthKeyFromDate(dateStr) {
-    if (!dateStr) return null;
-    if (/^\d{4}-\d{2}/.test(dateStr)) {
-      return dateStr.slice(0, 7);
-    }
-    const m = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
-    if (m) {
-      let [_, mm, dd, yy] = m;
-      mm = mm.padStart(2, "0");
-      let year = yy.length === 2 ? `20${yy}` : yy;
-      return `${year}-${mm}`;
-    }
-    return null;
-  }
 
   const filteredTransactions =
     selectedMonth === "all"
@@ -213,33 +390,21 @@ const handleContributeGoal = (id, amount) => {
 
   const income = filteredTransactions
     .filter((t) => t.type === "income")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   const payments = filteredTransactions
     .filter((t) => t.type === "payment")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   const expenses = filteredTransactions
     .filter((t) => t.type === "expense")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   const transfers = filteredTransactions
     .filter((t) => t.type === "transfer")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   const leftover = income - expenses - payments;
-
-  function formatMonthLabel(key) {
-    if (key === "all") return "All Months";
-    const [year, month] = key.split("-");
-    const names = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    const idx = parseInt(month, 10) - 1;
-    if (Number.isNaN(idx) || idx < 0 || idx > 11) return key;
-    return `${names[idx]} ${year}`;
-  }
 
   const monthSummary = {
     monthLabel: formatMonthLabel(selectedMonth),
@@ -251,16 +416,20 @@ const handleContributeGoal = (id, amount) => {
   };
 
   /* ---------- Styles ---------- */
+
   const appClass = "min-h-screen bg-[#050505] text-gray-100";
   const headerClass =
     "border-b sticky top-0 z-50 backdrop-blur bg-[#050505cc] border-red-900 h-16";
+
   const navActive =
     "px-4 py-1 rounded-full border border-red-500 bg-red-500/10 text-red-300 " +
     "transition transform hover:-translate-y-0.5 hover:shadow-[0_0_18px_rgba(248,113,113,0.7)]";
+
   const navInactive =
     "px-4 py-1 rounded-full border border-gray-700 text-gray-300 " +
     "transition transform hover:-translate-y-0.5 hover:border-red-500 hover:text-red-300 " +
     "hover:shadow-[0_0_16px_rgba(248,113,113,0.5)]";
+
   const cardClass =
     "rounded-3xl p-6 border bg-[#080808] border-red-900 shadow-[0_0_40px_rgba(0,0,0,0.7)] " +
     "transition-transform transition-shadow duration-200 " +
@@ -274,7 +443,8 @@ const handleContributeGoal = (id, amount) => {
     { id: "reports", label: "Reports" },
   ];
 
-  // Show loading screen while checking auth
+  /* ---------- Loading / Auth gates ---------- */
+
   if (!authReady) {
     return (
       <div className={appClass}>
@@ -288,7 +458,6 @@ const handleContributeGoal = (id, amount) => {
     );
   }
 
-  // Show login page if not authenticated
   if (!user) {
     return (
       <div className={appClass}>
@@ -306,7 +475,6 @@ const handleContributeGoal = (id, amount) => {
     );
   }
 
-  // Show loading screen while fetching user data
   if (!dataLoaded) {
     return (
       <div className={appClass}>
@@ -328,14 +496,15 @@ const handleContributeGoal = (id, amount) => {
   }
 
   /* ---------- Render ---------- */
+
   return (
     <div className={appClass}>
-      {/* HEADER */}
       <header className={headerClass}>
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <img src={logo} alt="BudgetR logo" className="h-9 w-auto" />
           </div>
+
           <div className="flex items-center gap-4">
             <nav className="flex gap-2 text-sm">
               {tabs.map((t) => (
@@ -348,20 +517,18 @@ const handleContributeGoal = (id, amount) => {
                 </button>
               ))}
             </nav>
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => signOut(auth)}
-                className={navInactive}
-              >
-                Log out
-              </button>
-            </div>
+
+            <button
+              type="button"
+              onClick={() => signOut(auth)}
+              className={navInactive}
+            >
+              Log out
+            </button>
           </div>
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
       <main className="max-w-6xl mx-auto px-6 py-10">
         {activeTab === "dashboard" && (
           <DashboardPage
@@ -374,13 +541,9 @@ const handleContributeGoal = (id, amount) => {
             goals={goals}
             onContributeGoal={handleContributeGoal}
             transactions={transactions}
-            onAddTransactions={(newItems) =>
-              setTransactions((prev) => [...prev, ...newItems])
-            }
-            onDeleteTransaction={(id) =>
-              setTransactions((prev) => prev.filter((t) => t.id !== id))
-            }
-            onClearTransactions={() => setTransactions([])}
+            onAddTransactions={handleAddTransactions}
+            onDeleteTransaction={handleDeleteTransaction}
+            onClearTransactions={handleClearTransactions}
           />
         )}
 
@@ -399,18 +562,10 @@ const handleContributeGoal = (id, amount) => {
             theme={theme}
             cardClass={cardClass}
             transactions={transactions}
-            onAddTransactions={(newItems) =>
-              setTransactions((prev) => [...prev, ...newItems])
-            }
-            onUpdateTransaction={(updated) =>
-              setTransactions((prev) =>
-                prev.map((t) => (t.id === updated.id ? updated : t))
-              )
-            }
-            onDeleteTransaction={(id) =>
-              setTransactions((prev) => prev.filter((t) => t.id !== id))
-            }
-            onClearTransactions={() => setTransactions([])}
+            onAddTransactions={handleAddTransactions}
+            onUpdateTransaction={handleUpdateTransaction}
+            onDeleteTransaction={handleDeleteTransaction}
+            onClearTransactions={handleClearTransactions}
           />
         )}
 
@@ -426,10 +581,7 @@ const handleContributeGoal = (id, amount) => {
         )}
 
         {activeTab === "reports" && (
-          <ReportsPage
-            cardClass={cardClass}
-            transactions={filteredTransactions}
-          />
+          <ReportsPage cardClass={cardClass} transactions={filteredTransactions} />
         )}
       </main>
     </div>
