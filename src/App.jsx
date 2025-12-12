@@ -31,6 +31,9 @@ const defaultGoals = [
   },
 ];
 
+const blankGoals = [];
+
+
 
 /* ---------- Budget helpers ---------- */
 
@@ -54,6 +57,14 @@ const defaultBudget = {
     { id: 11, label: "Fun Money", amount: 100 },
   ],
 };
+
+const blankBudget = {
+  monthLabel: "",
+  income: [],
+  fixed: [],
+  variable: [],
+};
+
 
 function getBudgetTotals(budget) {
   const sum = (arr) =>
@@ -138,7 +149,7 @@ const handleAddGoal = () => {
 
   /* ---------- LocalStorage ---------- */
 
-  // Load transactions once on mount
+  // Load from cloud when user logs in
 useEffect(() => {
   const unsub = onAuthStateChanged(auth, async (u) => {
     setUser(u);
@@ -152,17 +163,27 @@ useEffect(() => {
     if (snap.exists()) {
       const data = snap.data();
       setTransactions(Array.isArray(data.transactions) ? data.transactions : []);
-      setBudget(data.budget || defaultBudget);
-      setGoals(Array.isArray(data.goals) ? data.goals : defaultGoals);
+      setBudget(data.budget || blankBudget);
+      setGoals(Array.isArray(data.goals) ? data.goals : blankGoals);
       setSelectedMonth(data.selectedMonth || "all");
     } else {
-      await setDoc(ref, {
-        transactions: [],
-        budget: defaultBudget,
-        goals: defaultGoals,
-        selectedMonth: "all",
-        updatedAt: Date.now(),
-      });
+      await setDoc(
+        ref,
+        {
+          transactions: [],
+          budget: blankBudget,
+          goals: blankGoals,
+          selectedMonth: "all",
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      );
+
+      // also set local state so the UI is blank immediately
+      setTransactions([]);
+      setBudget(blankBudget);
+      setGoals(blankGoals);
+      setSelectedMonth("all");
     }
   });
 
@@ -347,9 +368,6 @@ if (!user) {
               ))}
             </nav>
             <div className="flex items-center gap-4">
-  <nav className="flex gap-2 text-sm">
-    ...
-  </nav>
 
   <button
     type="button"
@@ -437,5 +455,3 @@ if (!user) {
     </div>
   );
 }
-
-
