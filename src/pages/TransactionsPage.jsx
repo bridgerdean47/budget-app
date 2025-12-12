@@ -175,6 +175,81 @@ export default function TransactionsPage({
   /* -----------------------------------------------
      CSV IMPORT
   -------------------------------------------------- */
+  const handleFilesSelected = async (fileList) => {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+
+  // quick validation
+  const bad = files.find((f) => !f.name.toLowerCase().endsWith(".csv"));
+  if (bad) {
+    setImportMessage("Please choose only .csv files.");
+    return;
+  }
+
+  setImportMessage(`Reading ${files.length} file(s)...`);
+
+  const allParsed = [];
+
+  for (const file of files) {
+    // read file -> text
+    const text = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+
+    const parsedRaw = parseCsv(text, transactions.length + allParsed.length);
+
+    const parsed = parsedRaw.map((tx) => {
+      const desc = (tx.description || "").toLowerCase();
+
+      // ----- TYPE FIX: mark certain expenses as payments/transfers -----
+      let type = tx.type || "expense";
+
+      if (type === "expense") {
+        if (
+          desc.includes(" epay") ||
+          desc.includes("type: epay") ||
+          desc.includes("withdrawal ach chase credit crd")
+        ) {
+          type = "transfer";
+        } else if (desc.includes("payment thank you")) {
+          type = "payment";
+        }
+      }
+
+      // ----- CATEGORY LOGIC -----
+      let category = tx.category || "";
+      const guessed = guessCategory(tx.description);
+
+      if (guessed === "Rent") {
+        category = "Rent";
+      } else if (!category || category.toLowerCase() === "uncategorized") {
+        category = guessed || "Uncategorized";
+      }
+
+      return {
+        ...tx,
+        type,
+        category,
+      };
+    });
+
+    allParsed.push(...parsed);
+  }
+
+  if (!allParsed.length) {
+    setImportMessage("No valid rows found in selected CSV files.");
+  } else {
+    onAddTransactions(allParsed);
+    setImportMessage(`Imported ${allParsed.length} transactions from ${files.length} file(s).`);
+  }
+
+  // allow re-selecting the same files again
+  if (fileInputRef.current) fileInputRef.current.value = "";
+};
+
   const handleFileSelected = (file) => {
     if (!file) return;
 
@@ -256,12 +331,11 @@ if (type === "expense") {
     setIsDragging(false);
   };
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const droppedFile = e.dataTransfer.files?.[0];
-    if (droppedFile) handleFileSelected(droppedFile);
-  };
+const handleDrop = (e) => {
+  e.preventDefault();
+  setIsDragging(false);
+  handleFilesSelected(e.dataTransfer.files);
+};
 
   /* -----------------------------------------------
      SORTING
@@ -370,21 +444,20 @@ const sortedTransactions = useMemo(() => {
           }
         >
           <p className="text-gray-200 font-medium mb-1">
-            Drag &amp; drop a CSV file here
+            Drag & drop CSV file(s) here
           </p>
           <p className="text-gray-400">
             or <span className="text-red-300 underline">click to browse</span>
           </p>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={(e) =>
-              handleFileSelected(e.target.files?.[0] || null)
-            }
-          />
+<input
+  ref={fileInputRef}
+  type="file"
+  accept=".csv"
+  multiple
+  className="hidden"
+  onChange={(e) => handleFilesSelected(e.target.files)}
+/>
         </div>
 
         {importMessage && (

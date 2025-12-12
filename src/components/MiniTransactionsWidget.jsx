@@ -12,36 +12,43 @@ export default function MiniTransactionsWidget({
   const [importMessage, setImportMessage] = useState("");
   const fileInputRef = useRef(null);
 
-  const handleFileSelected = (file) => {
-    if (!file) return;
-
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setImportMessage("Please choose a .csv file.");
-      return;
-    }
-
-    setImportMessage(`Reading ${file.name}...`);
-
+  const readFileText = (file) =>
+  new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target.result;
-      // ⭐ USE THE SAME parseCsv FROM csv.js - no extra processing!
-      const parsed = parseCsv(text, transactions.length);
-      
-      if (!parsed.length) {
-        setImportMessage("No valid rows found in CSV.");
-      } else {
-        onAddTransactions(parsed);
-        setImportMessage(
-          `Imported ${parsed.length} transactions from ${file.name}.`
-        );
-      }
-    };
-    reader.onerror = () => {
-      setImportMessage("Error reading file.");
-    };
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = reject;
     reader.readAsText(file);
-  };
+  });
+
+const handleFilesSelected = async (fileList) => {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+
+  const bad = files.find((f) => !f.name.toLowerCase().endsWith(".csv"));
+  if (bad) {
+    setImportMessage("Please choose only .csv files.");
+    return;
+  }
+
+  setImportMessage(`Reading ${files.length} file(s)...`);
+
+  const allParsed = [];
+
+  for (const file of files) {
+    const text = await readFileText(file);
+    const parsed = parseCsv(text, transactions.length + allParsed.length);
+    allParsed.push(...parsed);
+  }
+
+  if (!allParsed.length) {
+    setImportMessage("No valid rows found in selected CSV files.");
+  } else {
+    onAddTransactions(allParsed);
+    setImportMessage(`Imported ${allParsed.length} transactions from ${files.length} file(s).`);
+  }
+
+  if (fileInputRef.current) fileInputRef.current.value = "";
+};
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -60,10 +67,7 @@ export default function MiniTransactionsWidget({
     e.stopPropagation();
     setIsDragging(false);
 
-    const droppedFile = e.dataTransfer.files?.[0];
-    if (!droppedFile) return;
-
-    handleFileSelected(droppedFile);
+handleFilesSelected(e.dataTransfer.files);
   };
 
   const sortedTransactions = useMemo(() => {
@@ -106,19 +110,20 @@ export default function MiniTransactionsWidget({
           }
         >
           <p className="text-gray-200 font-medium mb-1">
-            Drag &amp; drop a CSV file here
+            Drag & drop CSV file(s) here
           </p>
           <p className="text-gray-400">
             or <span className="text-red-300 underline">click to browse</span>
           </p>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={(e) => handleFileSelected(e.target.files?.[0] || null)}
-          />
+<input
+  ref={fileInputRef}
+  type="file"
+  accept=".csv"
+  multiple
+  className="hidden"
+  onChange={(e) => handleFilesSelected(e.target.files)}
+/>
         </div>
 
         {importMessage && (

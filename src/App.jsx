@@ -35,22 +35,21 @@ const defaultGoals = [
 const defaultBudget = {
   monthLabel: "January 2026",
   income: [
-    { id: 1, label: "Paycheck", amount: 3800 },
-    { id: 2, label: "Side Work", amount: 700 },
+    { id: 1, label: "Bridger Paycheck", amount: 2000 },
+    { id: 2, label: "Morgin Paycheck", amount: 3000 },
   ],
   fixed: [
-    { id: 3, label: "Rent", amount: 1400 },
-    { id: 4, label: "Utilities", amount: 250 },
-    { id: 5, label: "Car (Azera)", amount: 300 },
-    { id: 6, label: "Car (Rogue)", amount: 220 },
-    { id: 7, label: "Phone", amount: 90 },
-    { id: 8, label: "Subscriptions", amount: 70 },
+    { id: 3, label: "Rent", amount: 863 },
+    { id: 4, label: "Utilities", amount: 80 },
+    { id: 5, label: "Phone", amount: 30 },
+    { id: 6, label: "Subscriptions", amount: 66 },
+    { id: 7, label: "Car", amount: 400 },
   ],
   variable: [
-    { id: 9, label: "Groceries", amount: 400 },
-    { id: 10, label: "Gas", amount: 200 },
-    { id: 11, label: "Eating Out", amount: 150 },
-    { id: 12, label: "Fun Money", amount: 100 },
+    { id: 8, label: "Groceries", amount: 300 },
+    { id: 9, label: "Gas", amount: 100 },
+    { id: 10, label: "Eating Out", amount: 150 },
+    { id: 11, label: "Fun Money", amount: 100 },
   ],
 };
 
