@@ -53,6 +53,7 @@ export default function DashboardPage({
   theme,
   cardClass,
   monthSummary,
+  healthSummary,
   selectedMonth,
   onMonthChange,
   budgetTotals,
@@ -154,11 +155,8 @@ export default function DashboardPage({
       </section>
 
       {/* FINANCIAL HEALTH */}
-      <HealthScoreCard
-        cardClass={cardClass}
-        monthSummary={monthSummary}
-        goals={goals}
-      />
+<HealthScoreCard cardClass={cardClass} monthSummary={healthSummary || monthSummary} goals={goals} />
+
 
       {/* REPORTS WIDGET */}
       <section>

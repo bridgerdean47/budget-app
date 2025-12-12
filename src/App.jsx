@@ -393,16 +393,28 @@ export default function App() {
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   // dashboard uses this; health score can ignore payments if it wants
-  const leftover = income - expenses - payments;
+  // Dashboard leftover (payments reduce leftover)
+const leftover = income - expenses - payments;
 
-  const monthSummary = {
-    monthLabel: formatMonthLabel(selectedMonth),
-    income,
-    expenses,
-    payments,
-    leftover,
-    transfers,
-  };
+// Health score leftover (ignore payments)
+const leftoverNoPayments = income - expenses;
+
+const monthSummary = {
+  monthLabel: formatMonthLabel(selectedMonth),
+  income,
+  expenses,
+  payments,
+  leftover,
+  transfers,
+};
+
+// Send a separate summary to HealthScoreCard (if you wire it that way)
+const healthSummary = {
+  ...monthSummary,
+  leftover: leftoverNoPayments,
+  payments: 0, // optional, keeps it from being used accidentally
+};
+
 
   /* -----------------------------
      Styles
@@ -534,6 +546,7 @@ export default function App() {
             theme={theme}
             cardClass={cardClass}
             monthSummary={monthSummary}
+            healthSummary={healthSummary}
             selectedMonth={selectedMonth}
             onMonthChange={setSelectedMonth}
             budgetTotals={budgetTotals}
