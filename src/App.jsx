@@ -82,18 +82,19 @@ export default function App() {
     setGoals((prev) => prev.filter((g) => g.id !== id));
   };
 
-  const handleContributeGoal = (id, amount) => {
-    const amt = Number(amount);
-    if (!amt || !Number.isFinite(amt) || amt <= 0) return;
+const handleContributeGoal = (id, amount) => {
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt === 0) return;
 
-    setGoals((prev) =>
-      prev.map((g) =>
-        g.id === id
-          ? { ...g, current: (Number(g.current) || 0) + amt }
-          : g
-      )
-    );
-  };
+  setGoals((prev) =>
+    prev.map((g) => {
+      if (g.id !== id) return g;
+
+      const next = (Number(g.current) || 0) + amt;
+      return { ...g, current: Math.max(0, next) };
+    })
+  );
+};
 
   // Load from cloud when user logs in
   useEffect(() => {
