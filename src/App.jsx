@@ -5,6 +5,7 @@ import TransactionsPage from "./pages/TransactionsPage.jsx";
 import GoalsPage from "./pages/GoalsPage.jsx";
 import CashFlowBar from "./components/CashFlowBar.jsx";
 import ReportsPage from "./pages/ReportsPage.jsx";
+import logo from "./assets/logo.png";
 
 const TRANSACTIONS_KEY = "bm-transactions-v1";
 const GOALS_KEY = "bm-goals-v1";
@@ -278,8 +279,8 @@ const monthSummary = {
 
   const appClass = "min-h-screen bg-[#050505] text-gray-100";
 
-  const headerClass =
-    "border-b sticky top-0 z-50 backdrop-blur bg-[#050505cc] border-red-900";
+const headerClass =
+  "border-b sticky top-0 z-50 backdrop-blur bg-[#050505cc] border-red-900 h-16";
 
   const navActive =
     "px-4 py-1 rounded-full border border-red-500 bg-red-500/10 text-red-300 " +
@@ -311,17 +312,13 @@ const tabs = [
       {/* HEADER */}
       <header className={headerClass}>
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-<div className="flex items-center gap-2">
+<div className="flex items-center gap-3">
   <img
-    src="/logo-r.png"
+    src={logo}
     alt="BudgetR logo"
-    className="h-6 w-6"
+    className="h-9 w-auto"
   />
-  <span className="text-red-400 font-semibold">
-    BudgetR
-  </span>
 </div>
-
           <div className="flex items-center gap-4">
             <nav className="flex gap-2 text-sm">
               {tabs.map((t) => (
