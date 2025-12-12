@@ -12,6 +12,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "firebase": "^12.6.0",
     "papaparse": "^5.5.3",
     "plotly.js": "^3.3.0",
     "react": "^19.2.0",

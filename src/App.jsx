@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect } from "react";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import BudgetPage from "./pages/BudgetPage.jsx";
 import TransactionsPage from "./pages/TransactionsPage.jsx";
 import GoalsPage from "./pages/GoalsPage.jsx";
-import CashFlowBar from "./components/CashFlowBar.jsx";
 import ReportsPage from "./pages/ReportsPage.jsx";
 import logo from "./assets/logo.png";
+import LoginPage from "./pages/LoginPage.jsx";
+import { auth, db } from "./lib/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
-const TRANSACTIONS_KEY = "bm-transactions-v1";
-const GOALS_KEY = "bm-goals-v1";
 
 
 const defaultGoals = [
@@ -82,16 +83,12 @@ export default function App() {
   const [theme, setTheme] = useState("dark");
   const [transactions, setTransactions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState("all");
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
 
   // ---------- Goals State ----------
-  const [goals, setGoals] = useState(() => {
-    try {
-      const saved = localStorage.getItem(GOALS_KEY);
-      return saved ? JSON.parse(saved) : defaultGoals;
-    } catch {
-      return defaultGoals;
-    }
-  });
+  const [goals, setGoals] = useState(defaultGoals);
+
 
     // ---------- Goal helpers ----------
 const handleAddGoal = () => {
@@ -132,14 +129,8 @@ const handleAddGoal = () => {
   };
 
   // Budget state
-  const [budget, setBudget] = useState(() => {
-    try {
-      const saved = localStorage.getItem("budget-v1");
-      return saved ? JSON.parse(saved) : defaultBudget;
-    } catch {
-      return defaultBudget;
-    }
-  });
+  const [budget, setBudget] = useState(defaultBudget);
+
 
   const budgetTotals = getBudgetTotals(budget);
 
@@ -148,50 +139,54 @@ const handleAddGoal = () => {
   /* ---------- LocalStorage ---------- */
 
   // Load transactions once on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(TRANSACTIONS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setTransactions(parsed);
-        } else {
-          console.warn("Saved transactions is not an array, clearing it.");
-          localStorage.removeItem(TRANSACTIONS_KEY);
-        }
-      }
-    } catch (err) {
-      console.error("Error reading saved transactions", err);
-      localStorage.removeItem(TRANSACTIONS_KEY);
-    }
-  }, []);
-
-  // Save transactions whenever they change
-  useEffect(() => {
-    try {
-      localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
-    } catch (err) {
-      console.error("Error saving transactions", err);
-    }
-  }, [transactions]);
-
-  // Save budget
-  useEffect(() => {
-    try {
-      localStorage.setItem("budget-v1", JSON.stringify(budget));
-    } catch (err) {
-      console.error("Error saving budget", err);
-    }
-  }, [budget]);
-
-  // Save goals
 useEffect(() => {
-  try {
-    localStorage.setItem(GOALS_KEY, JSON.stringify(goals));
-  } catch (err) {
-    console.error("Error saving goals", err);
-  }
-}, [goals]);
+  const unsub = onAuthStateChanged(auth, async (u) => {
+    setUser(u);
+    setAuthReady(true);
+
+    if (!u) return;
+
+    const ref = doc(db, "users", u.uid);
+    const snap = await getDoc(ref);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      setTransactions(Array.isArray(data.transactions) ? data.transactions : []);
+      setBudget(data.budget || defaultBudget);
+      setGoals(Array.isArray(data.goals) ? data.goals : defaultGoals);
+      setSelectedMonth(data.selectedMonth || "all");
+    } else {
+      await setDoc(ref, {
+        transactions: [],
+        budget: defaultBudget,
+        goals: defaultGoals,
+        selectedMonth: "all",
+        updatedAt: Date.now(),
+      });
+    }
+  });
+
+  return () => unsub();
+}, []);
+
+
+useEffect(() => {
+  if (!user) return;
+
+  const ref = doc(db, "users", user.uid);
+  setDoc(
+    ref,
+    {
+      transactions,
+      budget,
+      goals,
+      selectedMonth,
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
+}, [user, transactions, budget, goals, selectedMonth]);
+
 
 /* ---------- Month filtering + summary ---------- */
 
@@ -304,6 +299,26 @@ const tabs = [
   { id: "reports", label: "Reports" },
 ];
 
+if (!authReady) return null;
+
+if (!user) {
+  return (
+    <div className={appClass}>
+      <header className={headerClass}>
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+          {/* your logo */}
+          <div className="flex items-center">
+            <img src={logo} alt="BudgetR" className="h-9 w-auto" />
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-6 py-10">
+        <LoginPage cardClass={cardClass} />
+      </main>
+    </div>
+  );
+}
 
   /* ---------- Render ---------- */
 
@@ -331,6 +346,20 @@ const tabs = [
                 </button>
               ))}
             </nav>
+            <div className="flex items-center gap-4">
+  <nav className="flex gap-2 text-sm">
+    ...
+  </nav>
+
+  <button
+    type="button"
+    onClick={() => signOut(auth)}
+    className={navInactive}
+  >
+    Log out
+  </button>
+</div>
+
           </div>
         </div>
       </header>
