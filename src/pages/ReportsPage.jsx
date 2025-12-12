@@ -33,7 +33,7 @@ function CustomTooltip({ active, payload }) {
   );
 }
 
-export default function ReportsPage({ cardClass, transactions }) {
+export default function ReportsPage({ cardClass, transactions, compact = false }) {
   // Use only expenses for "where money is going"
   const expenseTx = (transactions || []).filter(
     (t) => t.type === "expense"
@@ -91,17 +91,19 @@ export default function ReportsPage({ cardClass, transactions }) {
 
   return (
     <div className="space-y-8">
-      {/* HEADER */}
-      <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-100">
-            Spending Reports
-          </h2>
-          <p className="text-sm text-gray-400">
-            See where your money is going by category.
-          </p>
-        </div>
-      </div>
+{/* HEADER */}
+{!compact && (
+  <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+    <div>
+      <h2 className="text-3xl font-bold text-gray-100">
+        Spending Reports
+      </h2>
+      <p className="text-sm text-gray-400">
+        See where your money is going by category.
+      </p>
+    </div>
+  </div>
+)}
 
       {/* MAIN CARD */}
       <section className={cardClass}>

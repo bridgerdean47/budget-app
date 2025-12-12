@@ -184,6 +184,19 @@ export default function TransactionsPage({
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const fileInputRef = useRef(null);
+  const getFileSig = (f) => `${f.name}::${f.size}::${f.lastModified}`;
+
+const importedSigSet = useMemo(() => {
+  const set = new Set();
+  (imports || []).forEach((b) => {
+    (b.files || []).forEach((f) => {
+      if (!f) return;
+      set.add(`${f.name}::${f.size}::${f.lastModified}`);
+    });
+  });
+  return set;
+}, [imports]);
+
 
   /* -----------------------------------------------
      CSV IMPORT (MULTI-FILE) + BATCH META
@@ -206,11 +219,29 @@ export default function TransactionsPage({
       return;
     }
 
-    setImportMessage(`Reading ${files.length} file(s)...`);
+// Remove files that were already imported
+const newFiles = files.filter((f) => !importedSigSet.has(getFileSig(f)));
+const dupFiles = files.filter((f) => importedSigSet.has(getFileSig(f)));
+
+if (!newFiles.length) {
+  setImportMessage(
+    `Skipped import: all selected CSV(s) were already imported (${dupFiles
+      .map((f) => f.name)
+      .join(", ")}).`
+  );
+  if (fileInputRef.current) fileInputRef.current.value = "";
+  return;
+}
+
+setImportMessage(
+  `Reading ${newFiles.length} new file(s)...` +
+    (dupFiles.length ? ` (Skipped ${dupFiles.length} duplicate)` : "")
+);
+
 
     const allParsed = [];
 
-    for (const file of files) {
+    for (const file of newFiles) {
       const text = await readFileText(file);
       const parsedRaw = parseCsv(text, transactions.length + allParsed.length);
 
@@ -260,7 +291,7 @@ export default function TransactionsPage({
         id: batchId,
         importedAt: Date.now(),
         count: allParsed.length,
-        files: files.map((f) => ({
+        files: newFiles.map((f) => ({
           name: f.name,
           size: f.size,
           lastModified: f.lastModified,

@@ -1,17 +1,9 @@
+// src/pages/DashboardPage.jsx
 import { useMemo } from "react";
 import CashFlowBar from "../components/CashFlowBar.jsx";
 import GoalCard from "../components/GoalCard.jsx";
 import OverviewStat from "../components/OverviewStat.jsx";
-import MiniTransactionsWidget from "../components/MiniTransactionsWidget.jsx";
-
-function formatCurrency(value) {
-  const num = Number(value) || 0;
-  return num.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  });
-}
+import ReportsPage from "./ReportsPage.jsx";
 
 // Turn a date string into a "YYYY-MM" key
 function getMonthKeyFromDate(dateStr) {
@@ -66,11 +58,7 @@ export default function DashboardPage({
   goals,
   onContributeGoal,
   transactions,
-  imports,
-  onDeleteImportBatch,
-  onAddTransactions,
-  onDeleteTransaction,
-  onClearTransactions,
+  reportTransactions, // <-- add this prop from App.jsx (filteredTransactions)
 }) {
   // Build dropdown options from transaction dates
   const monthOptions = useMemo(() => {
@@ -79,7 +67,7 @@ export default function DashboardPage({
         .map((t) => getMonthKeyFromDate(t.date))
         .filter(Boolean)
     );
-    const keys = Array.from(set).sort(); // "2025-01", "2025-02", ...
+    const keys = Array.from(set).sort();
     return ["all", ...keys];
   }, [transactions]);
 
@@ -158,22 +146,23 @@ export default function DashboardPage({
               goal={goal}
               theme={theme}
               onContribute={(amount) => onContributeGoal(goal.id, amount)}
-              // no onDelete here → cannot delete from dashboard
             />
           ))}
         </div>
       </section>
 
-      {/* MINI TRANSACTIONS WIDGET */}
-      <MiniTransactionsWidget
-        cardClass={cardClass}
-        transactions={transactions}
-        onAddTransactions={onAddTransactions}
-        onDeleteTransaction={onDeleteTransaction}
-onClearTransactions={onClearTransactions}
-imports={imports}
-onDeleteImportBatch={onDeleteImportBatch}
-      />
+      {/* REPORTS WIDGET */}
+      <section>
+        <h3 className="mb-4 text-xs font-semibold tracking-[0.28em] text-red-400">
+          REPORTS
+        </h3>
+
+        <ReportsPage
+          cardClass={cardClass}
+          transactions={reportTransactions || []}
+          compact
+        />
+      </section>
     </div>
   );
 }

@@ -285,20 +285,25 @@ export default function App() {
     });
   };
 
-  const handleClearTransactions = () => {
-    setTransactions((prev) => {
-      prev.forEach((tx) => {
-        if (tx?.goalApplied) {
-          applyToSavingsGoal(
-            -Number(tx.goalApplied.delta || 0),
-            tx.goalApplied.goalId
-          );
-        }
-      });
-
-      return [];
+const handleClearTransactions = () => {
+  setTransactions((prev) => {
+    // Undo all applied goal deltas
+    prev.forEach((tx) => {
+      if (tx?.goalApplied) {
+        applyToSavingsGoal(
+          -Number(tx.goalApplied.delta || 0),
+          tx.goalApplied.goalId
+        );
+      }
     });
-  };
+
+    return [];
+  });
+
+  // Clear import history too
+  setImports([]);
+};
+
 
   const handleDeleteImportBatch = (importId) => {
   // undo any goalApplied deltas from that batch, then remove the txs
@@ -465,8 +470,8 @@ export default function App() {
 
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
-    { id: "budget", label: "Estimate" },
     { id: "transactions", label: "Transactions" },
+    { id: "budget", label: "Estimate" },
     { id: "goals", label: "Goals" },
     { id: "reports", label: "Reports" },
   ];
@@ -572,6 +577,7 @@ export default function App() {
             imports={imports}
             onDeleteImportBatch={handleDeleteImportBatch}
             onAddTransactions={handleAddTransactions}
+            reportTransactions={filteredTransactions}
             onDeleteTransaction={handleDeleteTransaction}
             onClearTransactions={handleClearTransactions}
           />
