@@ -1,7 +1,5 @@
-
+// src/pages/GoalsPage.jsx
 import { useState } from "react";
-
-
 
 export default function GoalsPage({
   cardClass,
@@ -13,6 +11,9 @@ export default function GoalsPage({
 }) {
   const [amounts, setAmounts] = useState({});
 
+  // (Optional) Local input state for targets so typing feels smooth
+  const [targets, setTargets] = useState({});
+
   const handleChangeAmount = (id, value) => {
     setAmounts((prev) => ({ ...prev, [id]: value }));
   };
@@ -23,6 +24,23 @@ export default function GoalsPage({
     if (!amt || amt <= 0) return;
     onContributeGoal(id, amt);
     setAmounts((prev) => ({ ...prev, [id]: "" }));
+  };
+
+  const handleTargetFocus = (goal) => {
+    setTargets((prev) => ({
+      ...prev,
+      [goal.id]: String(goal.target ?? 0),
+    }));
+  };
+
+  const handleTargetChange = (goalId, value) => {
+    setTargets((prev) => ({ ...prev, [goalId]: value }));
+  };
+
+  const commitTarget = (goalId) => {
+    const raw = targets[goalId];
+    const next = Number(raw);
+    onUpdateGoal(goalId, { target: Number.isFinite(next) ? next : 0 });
   };
 
   return (
@@ -44,75 +62,89 @@ export default function GoalsPage({
 
       <div className="grid gap-4 md:grid-cols-2">
         {goals.map((goal) => {
-          const pct = Math.min(
-            100,
-            goal.target > 0
-              ? Math.round(((Number(goal.current) || 0) / goal.target) * 100)
-              : 0
-          );
+          const current = Number(goal.current) || 0;
+          const target = Number(goal.target) || 0;
+
+          const pct =
+            target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+
+          const remaining = Math.max(0, target - current);
 
           return (
-<section key={goal.id} className={cardClass}>
-  <div className="flex items-start justify-between mb-3">
-    <div className="flex-1 space-y-1">
-      <input
-        className="bg-transparent text-sm font-semibold text-gray-100 border-b border-transparent focus:border-gray-600 outline-none w-full"
-        value={goal.label}
-        onChange={(e) =>
-          onUpdateGoal(goal.id, { label: e.target.value })
-        }
-      />
-      <div className="flex gap-2 text-[0.7rem] text-gray-400">
-        <input
-          className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none w-14"
-          value={goal.code}
-          onChange={(e) =>
-            onUpdateGoal(goal.id, { code: e.target.value })
-          }
-        />
-        <span>Plan:</span>
-        <input
-          type="number"
-          className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none w-20"
-          value={goal.planPerMonth}
-          onChange={(e) =>
-            onUpdateGoal(goal.id, {
-              planPerMonth: Number(e.target.value) || 0,
-            })
-          }
-        />
-        <span>/mo</span>
-      </div>
+            <section key={goal.id} className={cardClass}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1 space-y-2">
+                  {/* Goal name */}
+                  <input
+                    className="bg-transparent text-sm font-semibold text-gray-100 border-b border-transparent focus:border-gray-600 outline-none w-full"
+                    value={goal.label}
+                    onChange={(e) =>
+                      onUpdateGoal(goal.id, { label: e.target.value })
+                    }
+                  />
 
-      {/* NEW: Target row */}
-      <div className="flex gap-2 text-[0.7rem] text-gray-400 mt-1">
-        <span>Target:</span>
-        <input
-          type="number"
-          className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none w-24"
-          value={goal.target}
-          onChange={(e) =>
-            onUpdateGoal(goal.id, {
-              target: Number(e.target.value) || 0,
-            })
-          }
-        />
-      </div>
-    </div>
+                  {/* Code + plan row */}
+                  <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-gray-400">
+                    <input
+                      className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none w-14"
+                      value={goal.code}
+                      onChange={(e) =>
+                        onUpdateGoal(goal.id, { code: e.target.value })
+                      }
+                    />
+                    <span>Plan:</span>
+                    <input
+                      type="number"
+                      className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none w-20"
+                      value={goal.planPerMonth}
+                      onChange={(e) =>
+                        onUpdateGoal(goal.id, {
+                          planPerMonth: Number(e.target.value) || 0,
+                        })
+                      }
+                    />
+                    <span>/mo</span>
+                  </div>
 
-    <button
-      type="button"
-      onClick={() => onDeleteGoal(goal.id)}
-      className="text-xs text-gray-500 hover:text-red-400 ml-3"
-    >
-      ×
-    </button>
-  </div>
-              <div className="mb-2 text-sm text-gray-200 text-right">
-                ${Number(goal.current).toFixed(2)} / $
-                {Number(goal.target).toFixed(2)}
+                  {/* Target row (editable) */}
+                  <div className="flex items-center gap-2 text-[0.7rem] text-gray-400">
+                    <span>Target:</span>
+                    <input
+                      type="number"
+                      className="bg-transparent border-b border-transparent focus:border-gray-600 outline-none w-28"
+                      value={targets[goal.id] ?? String(target)}
+                      onFocus={() => handleTargetFocus(goal)}
+                      onChange={(e) => handleTargetChange(goal.id, e.target.value)}
+                      onBlur={() => commitTarget(goal.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Delete */}
+                <button
+                  type="button"
+                  onClick={() => onDeleteGoal(goal.id)}
+                  className="text-xs text-gray-500 hover:text-red-400 ml-3"
+                  aria-label="Delete goal"
+                >
+                  ×
+                </button>
               </div>
 
+              {/* Progress numbers */}
+              <div className="mb-1 text-sm text-gray-200 text-right">
+                ${current.toFixed(2)} / ${target.toFixed(2)}
+              </div>
+              <div className="mb-3 text-[0.75rem] text-gray-400 text-right">
+                Remaining: ${remaining.toFixed(2)}
+              </div>
+
+              {/* Progress bar */}
               <div className="h-2 w-full overflow-hidden rounded-full bg-black mb-3">
                 <div
                   className={
@@ -123,6 +155,7 @@ export default function GoalsPage({
                 />
               </div>
 
+              {/* Contribute */}
               <div className="flex items-center gap-2 text-xs">
                 <input
                   type="number"
@@ -130,9 +163,7 @@ export default function GoalsPage({
                   placeholder="Amount"
                   className="flex-1 rounded-full bg-black border border-gray-700 px-3 py-1.5 text-xs text-gray-100 outline-none focus:border-red-400"
                   value={amounts[goal.id] ?? ""}
-                  onChange={(e) =>
-                    handleChangeAmount(goal.id, e.target.value)
-                  }
+                  onChange={(e) => handleChangeAmount(goal.id, e.target.value)}
                 />
                 <button
                   type="button"
