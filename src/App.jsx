@@ -311,11 +311,16 @@ const tabs = [
       {/* HEADER */}
       <header className={headerClass}>
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xs font-semibold tracking-[0.25em] text-red-400">
-              BudgetR
-            </h1>
-          </div>
+<div className="flex items-center gap-2">
+  <img
+    src="/logo-r.png"
+    alt="BudgetR logo"
+    className="h-6 w-6"
+  />
+  <span className="text-red-400 font-semibold">
+    BudgetR
+  </span>
+</div>
 
           <div className="flex items-center gap-4">
             <nav className="flex gap-2 text-sm">
