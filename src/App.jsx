@@ -425,9 +425,6 @@ const handleClearTransactions = () => {
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-  const payments = filteredTransactions
-    .filter((t) => t.type === "payment")
-    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   const expenses = filteredTransactions
     .filter((t) => t.type === "expense")
@@ -437,13 +434,12 @@ const handleClearTransactions = () => {
     .filter((t) => t.type === "transfer")
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-  const leftover = income - expenses - payments;
+  const leftover = income - expenses;
 
   const monthSummary = {
     monthLabel: formatMonthLabel(selectedMonth),
     income,
     expenses,
-    payments,
     leftover,
     transfers,
   };

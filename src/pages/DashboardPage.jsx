@@ -4,6 +4,7 @@ import CashFlowBar from "../components/CashFlowBar.jsx";
 import GoalCard from "../components/GoalCard.jsx";
 import OverviewStat from "../components/OverviewStat.jsx";
 import ReportsPage from "./ReportsPage.jsx";
+import HealthScoreCard from "../components/HealthScoreCard.jsx";
 
 // Turn a date string into a "YYYY-MM" key
 function getMonthKeyFromDate(dateStr) {
@@ -105,6 +106,7 @@ export default function DashboardPage({
           MONTH OVERVIEW
         </h3>
 
+
         {/* 3 columns: Income, Expenses, Payments */}
         <div className="grid gap-6 md:grid-cols-3">
           <OverviewStat
@@ -150,6 +152,13 @@ export default function DashboardPage({
           ))}
         </div>
       </section>
+
+      {/* FINANCIAL HEALTH */}
+      <HealthScoreCard
+        cardClass={cardClass}
+        monthSummary={monthSummary}
+        goals={goals}
+      />
 
       {/* REPORTS WIDGET */}
       <section>
