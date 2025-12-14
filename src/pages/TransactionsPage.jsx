@@ -7,6 +7,7 @@ import { parseCsv } from "../lib/csv";
 -------------------------------------------------- */
 const CATEGORY_OPTIONS = [
   "Uncategorized",
+  "Credit Card",
   "Rent",
   "Credit Card Payments",
   "Loans",
@@ -35,8 +36,8 @@ const MERCHANT_CATEGORY_RULES = [
   { match: "apts ander", category: "Rent" },
   { match: "ach apts", category: "Rent" },
   { match: "withdrawal ach apts", category: "Rent" },
-  { match: "quantum fiber", category: "Bills & Utilities" }, // internet
-  { match: "dept education", category: "Loans" }, // student loans
+  { match: "quantum fiber", category: "Bills & Utilities" },
+  { match: "dept education", category: "Loans" },
   { match: "chase credit crd", category: "Credit Card Payments" },
 ];
 
@@ -186,17 +187,16 @@ export default function TransactionsPage({
   const fileInputRef = useRef(null);
   const getFileSig = (f) => `${f.name}::${f.size}::${f.lastModified}`;
 
-const importedSigSet = useMemo(() => {
-  const set = new Set();
-  (imports || []).forEach((b) => {
-    (b.files || []).forEach((f) => {
-      if (!f) return;
-      set.add(`${f.name}::${f.size}::${f.lastModified}`);
+  const importedSigSet = useMemo(() => {
+    const set = new Set();
+    (imports || []).forEach((b) => {
+      (b.files || []).forEach((f) => {
+        if (!f) return;
+        set.add(`${f.name}::${f.size}::${f.lastModified}`);
+      });
     });
-  });
-  return set;
-}, [imports]);
-
+    return set;
+  }, [imports]);
 
   /* -----------------------------------------------
      CSV IMPORT (MULTI-FILE) + BATCH META
@@ -219,25 +219,23 @@ const importedSigSet = useMemo(() => {
       return;
     }
 
-// Remove files that were already imported
-const newFiles = files.filter((f) => !importedSigSet.has(getFileSig(f)));
-const dupFiles = files.filter((f) => importedSigSet.has(getFileSig(f)));
+    const newFiles = files.filter((f) => !importedSigSet.has(getFileSig(f)));
+    const dupFiles = files.filter((f) => importedSigSet.has(getFileSig(f)));
 
-if (!newFiles.length) {
-  setImportMessage(
-    `Skipped import: all selected CSV(s) were already imported (${dupFiles
-      .map((f) => f.name)
-      .join(", ")}).`
-  );
-  if (fileInputRef.current) fileInputRef.current.value = "";
-  return;
-}
+    if (!newFiles.length) {
+      setImportMessage(
+        `Skipped import: all selected CSV(s) were already imported (${dupFiles
+          .map((f) => f.name)
+          .join(", ")}).`
+      );
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
-setImportMessage(
-  `Reading ${newFiles.length} new file(s)...` +
-    (dupFiles.length ? ` (Skipped ${dupFiles.length} duplicate)` : "")
-);
-
+    setImportMessage(
+      `Reading ${newFiles.length} new file(s)...` +
+        (dupFiles.length ? ` (Skipped ${dupFiles.length} duplicate)` : "")
+    );
 
     const allParsed = [];
 
@@ -249,21 +247,37 @@ setImportMessage(
         const desc = (tx.description || "").toLowerCase();
 
         // ----- TYPE FIX -----
+        // App types are now: income | expense | transfer | credit_card
+        // Normalize legacy values to keep old data/imports from breaking,
+        // but keep the explicit "credit_card" type (user-selectable)
         let type = tx.type || "expense";
+        // Fail-safe: any Payment Thank You should always be a transfer
+if (/payment\s*thank\s*you/.test(desc)) {
+  type = "transfer";
+}
 
-        if (type === "expense") {
-          if (
-            desc.includes(" epay") ||
-            desc.includes("type: epay") ||
-            desc.includes("withdrawal ach chase credit crd")
-          ) {
-            type = "transfer";
-          } else if (desc.includes("payment thank you")) {
-            type = "payment";
-          }
+// If Chase/CSV category is Credit Card Payments, treat as transfer (paying card)
+if (String(tx.category || "").toLowerCase() === "credit card payments") {
+  type = "transfer";
+}
+
+        // Normalize legacy values, but keep the explicit "credit_card" type (user-selectable)
+        if (type === "payment" || type === "credit") {
+          type = "transfer";
+        }
+
+        // EPAY and CC-payment-like descriptions should be transfer
+        if (
+          desc.includes(" epay") ||
+          desc.includes("type: epay") ||
+          desc.includes("withdrawal ach chase credit crd") ||
+          desc.includes("payment thank you")
+        ) {
+          type = "transfer";
         }
 
         // ----- CATEGORY LOGIC -----
+        // IMPORTANT: if `parseCsv` already provided a category (ex: Chase CSV), keep it.
         let category = tx.category || "";
         const guessed = guessCategory(tx.description);
 
@@ -355,7 +369,7 @@ setImportMessage(
         return sortConfig.direction === "asc" ? da - db : db - da;
       });
     } else if (sortConfig.key === "type") {
-      const order = { income: 0, expense: 1, payment: 2, transfer: 3 };
+      const order = { income: 0, expense: 1, transfer: 2, credit_card: 2 };
       data.sort((a, b) => {
         const aRank = order[a.type] ?? 99;
         const bRank = order[b.type] ?? 99;
@@ -386,6 +400,21 @@ setImportMessage(
         {sortConfig.direction === "asc" ? "▲" : "▼"}
       </span>
     );
+
+  // Display helpers — driven ONLY by stored type
+  const typeLabel = (t) => {
+    if (t.type === "credit_card") return "Credit Card";
+    if (t.type === "income") return "Income";
+    if (t.type === "transfer") return "Transfer";
+    return "Expense";
+  };
+
+  const typeClass = (t) => {
+    if (t.type === "credit_card") return "text-yellow-400";
+    if (t.type === "income") return "text-green-400";
+    if (t.type === "transfer") return "text-blue-400";
+    return "text-red-500";
+  };
 
   /* -----------------------------------------------
      RENDER
@@ -578,25 +607,8 @@ setImportMessage(
                   <td className="px-4 py-2 text-gray-200">{t.date}</td>
                   <td className="px-4 py-2 text-gray-100">{t.description}</td>
 
-                  <td
-                    className={
-                      "px-4 py-2 " +
-                      (t.type === "income"
-                        ? "text-green-400"
-                        : t.type === "payment"
-                        ? "text-yellow-400"
-                        : t.type === "transfer"
-                        ? "text-blue-400"
-                        : "text-red-500")
-                    }
-                  >
-                    {t.type === "income"
-                      ? "Income"
-                      : t.type === "payment"
-                      ? "Payment"
-                      : t.type === "transfer"
-                      ? "Transfer"
-                      : "Expense"}
+                  <td className={`px-4 py-2 ${typeClass(t)}`}>
+                    {typeLabel(t)}
                   </td>
 
                   {/* Category dropdown */}
@@ -690,15 +702,19 @@ setImportMessage(
               <label className="text-sm text-gray-300">Type</label>
               <select
                 className="w-full p-2 rounded bg-black text-gray-100 border border-gray-800"
-                value={editing.type}
+                value={
+                  editing.type === "payment" || editing.type === "credit"
+                    ? "transfer"
+                    : editing.type
+                }
                 onChange={(e) =>
                   setEditing({ ...editing, type: e.target.value })
                 }
               >
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
-                <option value="payment">Payment</option>
                 <option value="transfer">Transfer</option>
+                <option value="credit_card">Credit Card</option>
               </select>
             </div>
 
@@ -744,8 +760,14 @@ setImportMessage(
               <button
                 className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-500"
                 onClick={() => {
+                  const normalizedType =
+                    editing.type === "payment" || editing.type === "credit"
+                      ? "transfer"
+                      : editing.type;
+
                   const toSave = {
                     ...editing,
+                    type: normalizedType,
                     category:
                       editing.category ||
                       guessCategory(editing.description) ||

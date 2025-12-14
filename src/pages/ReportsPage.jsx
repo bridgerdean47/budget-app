@@ -34,9 +34,10 @@ function CustomTooltip({ active, payload }) {
 }
 
 export default function ReportsPage({ cardClass, transactions, compact = false }) {
-  // Use only expenses for "where money is going"
+  // Use expenses + credit card charges for "where money is going"
+  // (credit_card represents card purchases; transfers like payments are excluded)
   const expenseTx = (transactions || []).filter(
-    (t) => t.type === "expense"
+    (t) => t.type === "expense" || t.type === "credit_card"
   );
 
   // Totals per category

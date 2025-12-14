@@ -60,7 +60,7 @@ export default function DashboardPage({
   goals,
   onContributeGoal,
   transactions,
-  reportTransactions, // <-- add this prop from App.jsx (filteredTransactions)
+  reportTransactions,
 }) {
   // Build dropdown options from transaction dates
   const monthOptions = useMemo(() => {
@@ -73,13 +73,46 @@ export default function DashboardPage({
     return ["all", ...keys];
   }, [transactions]);
 
+  // Credit Card total is now driven by Chase-imported rows (source === "chase")
+  // because Chase charges/payments are treated as transfers.
+  const creditCardTotal = useMemo(() => {
+    const monthKey = selectedMonth;
+
+    const inSelectedMonth = (t) => {
+      if (monthKey === "all") return true;
+      return getMonthKeyFromDate(t.date) === monthKey;
+    };
+
+    return (transactions || [])
+      .filter((t) => inSelectedMonth(t))
+      .filter((t) => {
+        const src = String(t?.source || "").toLowerCase();
+
+        // Primary: new Chase rows — ONLY count actual charges
+        if (src === "chase") return t.type === "credit_card";
+
+        // Back-compat: older saved data
+        if (t.type === "credit_card") return true;
+        if ((t.category || "") === "Credit Card") return true;
+
+        return false;
+      })
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  }, [transactions, selectedMonth]);
+
+  // Use the computed credit card total so the dashboard matches the new transaction model.
+  const displayMonthSummary = useMemo(
+    () => ({ ...monthSummary, creditCard: creditCardTotal }),
+    [monthSummary, creditCardTotal]
+  );
+
   return (
     <div className="space-y-8">
       {/* HEADER ROW */}
       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
         <div>
           <h2 className="text-3xl font-bold text-gray-100">
-            {monthSummary.monthLabel}
+            {displayMonthSummary.monthLabel}
           </h2>
         </div>
 
@@ -107,22 +140,21 @@ export default function DashboardPage({
           MONTH OVERVIEW
         </h3>
 
-
-        {/* 3 columns: Income, Expenses, Payments */}
+        {/* 3 columns: Income, Expenses, Credit Card */}
         <div className="grid gap-6 md:grid-cols-3">
           <OverviewStat
             label="INCOME"
-            value={monthSummary.income}
+            value={displayMonthSummary.income}
             color="text-green-400"
           />
           <OverviewStat
             label="EXPENSES"
-            value={monthSummary.expenses}
+            value={displayMonthSummary.expenses}
             color="text-red-500"
           />
           <OverviewStat
-            label="PAYMENTS"
-            value={monthSummary.payments}
+            label="CREDIT CARD"
+            value={displayMonthSummary.creditCard}
             color="text-yellow-400"
           />
         </div>
@@ -130,8 +162,8 @@ export default function DashboardPage({
         <div className="mt-6">
           <CashFlowBar
             theme={theme}
-            income={monthSummary.income}
-            expenses={monthSummary.expenses}
+            income={displayMonthSummary.income}
+            expenses={displayMonthSummary.expenses}
           />
         </div>
       </section>
@@ -155,8 +187,7 @@ export default function DashboardPage({
       </section>
 
       {/* FINANCIAL HEALTH */}
-<HealthScoreCard cardClass={cardClass} monthSummary={healthSummary || monthSummary} goals={goals} />
-
+      <HealthScoreCard cardClass={cardClass} monthSummary={healthSummary || displayMonthSummary} goals={goals} />
 
       {/* REPORTS WIDGET */}
       <section>

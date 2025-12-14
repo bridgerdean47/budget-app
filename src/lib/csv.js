@@ -1,3 +1,5 @@
+// src/lib/csv.js
+
 // basic CSV line splitter that handles quotes
 function splitCsvLine(line) {
   const result = [];
@@ -198,6 +200,34 @@ function isEpayTransfer(descLower = "") {
   );
 }
 
+// Map Chase CSV categories into the app's CATEGORY_OPTIONS (keep unknowns as-is)
+function normalizeChaseCategory(cat = "") {
+  const c = String(cat || "").trim();
+  if (!c) return "";
+
+  const k = c.toLowerCase();
+
+  const map = {
+    restaurants: "Food & Drink",
+    dining: "Food & Drink",
+    "food & drink": "Food & Drink",
+    groceries: "Groceries",
+    gas: "Gas",
+    travel: "Travel",
+    shopping: "Shopping",
+    entertainment: "Entertainment",
+    "health & wellness": "Health & Wellness",
+    pets: "Pets",
+    insurance: "Insurance",
+    "bills & utilities": "Bills & Utilities",
+    utilities: "Bills & Utilities",
+    "credit card payments": "Credit Card Payments",
+    payment: "Credit Card Payments",
+  };
+
+  return map[k] || c; // keep unknown categories as-is
+}
+
 export function parseCsv(text, startId = 0) {
   if (!text) return [];
 
@@ -259,30 +289,23 @@ export function parseCsv(text, startId = 0) {
 
       const lowerDesc = (desc || "").toLowerCase();
 
-      // Pull the category from the CSV if present
+      // Use the category pre-selected by Chase when available
       const csvCategory = (get("category") || "").trim();
+      const normalizedCsvCategory = normalizeChaseCategory(csvCategory);
 
-      let type;
-      const rawType = (get("type") || "").toLowerCase();
+      // New rule:
+      // - Chase *charges* => type "credit_card" (shows as Credit Card and totals on dashboard)
+      // - Chase *payments/credits* => type "transfer" (ex: Payment Thank You / positive amount)
+      const isPaymentLike =
+  /payment\s*thank\s*you/.test(lowerDesc) ||
+  normalizedCsvCategory.toLowerCase() === "credit card payments" ||
+  rawAmount > 0;
 
-      // EPAY should be TRANSFER
-      if (isEpayTransfer(lowerDesc)) {
-        type = "transfer";
-      } else if (rawType === "payment" || rawAmount > 0) {
-        type = "payment";
-      } else {
-        type = "expense";
-      }
+      const type = isPaymentLike ? "transfer" : "credit_card";
 
-      // Thank-you stays PAYMENT
-      if (lowerDesc.includes("payment thank you")) {
-        type = "payment";
-      }
-
-      // Prefer CSV category; fallback to guesser
       const category =
-        csvCategory && csvCategory.toLowerCase() !== "uncategorized"
-          ? csvCategory
+        normalizedCsvCategory && normalizedCsvCategory.toLowerCase() !== "uncategorized"
+          ? normalizedCsvCategory
           : guessCategory(desc);
 
       out.push({
@@ -292,6 +315,7 @@ export function parseCsv(text, startId = 0) {
         amount: Math.abs(rawAmount),
         type,
         category,
+        source: "chase",
       });
       continue;
     }
@@ -308,30 +332,20 @@ export function parseCsv(text, startId = 0) {
 
       let type = "expense";
 
-      // ⭐ TRANSFER-STYLE CC MOVES FIRST (EPAY)
       if (isEpayTransfer(lowerDesc)) {
         type = "transfer";
-      } else if (lowerDesc.includes("payment thank you")) {
-        type = "payment";
       } else if (
+        lowerDesc.includes("payment thank you") ||
+        lowerDesc.includes("credit card payment") ||
+        lowerDesc.includes("cc payment") ||
         lowerDesc.includes("chase credit crd") ||
         lowerDesc.includes("credit card")
       ) {
-        type = "payment";
+        type = "transfer";
       } else if (rawAmount > 0) {
-        // money in
-        if (lowerCat.includes("transfer") || lowerDesc.includes("transfer")) {
-          type = "transfer";
-        } else {
-          type = "income";
-        }
+        type = lowerCat.includes("transfer") || lowerDesc.includes("transfer") ? "transfer" : "income";
       } else {
-        // money out
-        if (lowerCat.includes("transfer") || lowerDesc.includes("transfer")) {
-          type = "transfer";
-        } else {
-          type = "expense";
-        }
+        type = lowerCat.includes("transfer") || lowerDesc.includes("transfer") ? "transfer" : "expense";
       }
 
       out.push({
@@ -341,6 +355,7 @@ export function parseCsv(text, startId = 0) {
         amount: Math.abs(rawAmount),
         type,
         category: guessCategory(desc),
+        source: "fcu",
       });
       continue;
     }
@@ -359,20 +374,11 @@ export function parseCsv(text, startId = 0) {
 
       let type = "expense";
 
-      // EPAY should be TRANSFER even here if it appears
       if (isEpayTransfer(lowerDesc)) {
         type = "transfer";
-      } else if (
-        transType.includes("deposit") ||
-        typeField.includes("deposit") ||
-        rawAmount > 0
-      ) {
+      } else if (transType.includes("deposit") || typeField.includes("deposit") || rawAmount > 0) {
         type = "income";
-      } else if (
-        lowerCat.includes("transfer") ||
-        transType.includes("transfer") ||
-        lowerDesc.includes("transfer")
-      ) {
+      } else if (lowerCat.includes("transfer") || transType.includes("transfer") || lowerDesc.includes("transfer")) {
         type = "transfer";
       } else {
         type = "expense";
@@ -385,6 +391,7 @@ export function parseCsv(text, startId = 0) {
         amount: Math.abs(rawAmount),
         type,
         category: guessCategory(desc),
+        source: "iccu",
       });
       continue;
     }
@@ -403,12 +410,12 @@ export function parseCsv(text, startId = 0) {
 
       if (isEpayTransfer(lowerDesc)) type = "transfer";
       else if (typeRaw === "income") type = "income";
-      else if (typeRaw === "payment") type = "payment";
+      else if (typeRaw === "payment") type = "transfer";
       else if (typeRaw === "transfer") type = "transfer";
       else if (rawAmount > 0) type = "income";
 
       if (lowerDesc.includes("payment thank you")) {
-        type = "payment";
+        type = "transfer";
       }
 
       out.push({
@@ -418,6 +425,7 @@ export function parseCsv(text, startId = 0) {
         amount: Math.abs(rawAmount),
         type,
         category: guessCategory(desc),
+        source: "generic",
       });
       continue;
     }
@@ -441,7 +449,7 @@ export function parseCsv(text, startId = 0) {
         d.includes("cc payment") ||
         d.includes("chase credit crd")
       ) {
-        type = "payment";
+        type = "transfer";
       } else {
         type = rawAmount > 0 ? "income" : "expense";
       }
@@ -453,6 +461,7 @@ export function parseCsv(text, startId = 0) {
         amount: Math.abs(rawAmount),
         type,
         category: guessCategory(desc),
+        source: "generic",
       });
       continue;
     }

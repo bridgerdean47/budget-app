@@ -384,37 +384,35 @@ export default function App() {
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-  const payments = filteredTransactions
-    .filter((t) => t.type === "payment")
+  const creditCard = filteredTransactions
+    .filter((t) => t.type === "credit_card")
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
   const transfers = filteredTransactions
     .filter((t) => t.type === "transfer")
     .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-  // dashboard uses this; health score can ignore payments if it wants
-  // Dashboard leftover (payments reduce leftover)
-const leftover = income - expenses - payments;
+  // Dashboard leftover (credit card reduces leftover)
+  const leftover = income - expenses - creditCard;
 
-// Health score leftover (ignore payments)
-const leftoverNoPayments = income - expenses;
+  // Health score leftover (ignore credit card)
+  const leftoverNoCredit = income - expenses;
 
-const monthSummary = {
-  monthLabel: formatMonthLabel(selectedMonth),
-  income,
-  expenses,
-  payments,
-  leftover,
-  transfers,
-};
+  const monthSummary = {
+    monthLabel: formatMonthLabel(selectedMonth),
+    income,
+    expenses,
+    creditCard,
+    leftover,
+    transfers,
+  };
 
-// Send a separate summary to HealthScoreCard (if you wire it that way)
-const healthSummary = {
-  ...monthSummary,
-  leftover: leftoverNoPayments,
-  payments: 0, // optional, keeps it from being used accidentally
-};
-
+  // Send a separate summary to HealthScoreCard (if you wire it that way)
+  const healthSummary = {
+    ...monthSummary,
+    leftover: leftoverNoCredit,
+    creditCard: 0, // optional, keeps it from being used accidentally
+  };
 
   /* -----------------------------
      Styles
