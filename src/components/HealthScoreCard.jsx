@@ -12,11 +12,18 @@ function formatCurrency(value) {
   });
 }
 
-function scoreLabel(score) {
-  if (score >= 85) return { label: "Excellent", color: "text-green-400" };
-  if (score >= 70) return { label: "Good", color: "text-green-300" };
-  if (score >= 55) return { label: "Fair", color: "text-yellow-300" };
-  if (score >= 40) return { label: "Needs Work", color: "text-orange-300" };
+function gradeFromSavingsRate(savingsRate) {
+  const pct = (Number(savingsRate) || 0) * 100;
+
+  // Requested grading:
+  // - Good: 30–50% saved
+  // - Excellent: 60–70% saved
+  // (>= upper bounds still treated as the top grade)
+  if (pct >= 60) return { label: "Excellent", color: "text-green-400" };
+  if (pct >= 30) return { label: "Good", color: "text-green-300" };
+
+  if (pct >= 15) return { label: "Fair", color: "text-yellow-300" };
+  if (pct >= 5) return { label: "Needs Work", color: "text-orange-300" };
   return { label: "Critical", color: "text-red-400" };
 }
 
@@ -34,12 +41,16 @@ function scoreLabel(score) {
 export default function HealthScoreCard({ cardClass, monthSummary, goals }) {
   const income = Number(monthSummary?.income) || 0;
   const expenses = Number(monthSummary?.expenses) || 0;
-  const leftover = Number(monthSummary?.leftover) || 0;
+  const creditCard = Number(monthSummary?.creditCard) || 0;
+
+  // Leftover should match the dashboard net: Income - Expenses - Credit Card
+  const leftover = income - expenses - creditCard;
 
   const safeIncome = income > 0 ? income : 0;
 
   const savingsRate = safeIncome > 0 ? clamp(leftover / safeIncome, 0, 1) : 0; // 0..1
-  const expenseRatio = safeIncome > 0 ? clamp(expenses / safeIncome, 0, 2) : 0; // can exceed 1
+  const outflow = expenses + creditCard;
+  const expenseRatio = safeIncome > 0 ? clamp(outflow / safeIncome, 0, 2) : 0; // can exceed 1
 
   const savingsGoal =
     (goals || []).find(
@@ -63,7 +74,7 @@ export default function HealthScoreCard({ cardClass, monthSummary, goals }) {
   const emergencyPts = Math.round(10 * emergencyProgress);
 
   const score = clamp(savingsPts + expensePts + emergencyPts, 0, 100);
-  const meta = scoreLabel(score);
+  const meta = gradeFromSavingsRate(savingsRate);
 
   // Simple tips
   const tips = [];
@@ -93,6 +104,7 @@ export default function HealthScoreCard({ cardClass, monthSummary, goals }) {
         <div className="text-right text-xs text-gray-400 space-y-1">
           <div>Income: <span className="text-gray-200">{formatCurrency(income)}</span></div>
           <div>Expenses: <span className="text-gray-200">{formatCurrency(expenses)}</span></div>
+          <div>Credit Card: <span className="text-gray-200">{formatCurrency(creditCard)}</span></div>
           <div>Leftover: <span className="text-gray-200">{formatCurrency(leftover)}</span></div>
         </div>
       </div>

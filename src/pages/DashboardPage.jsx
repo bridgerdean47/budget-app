@@ -164,6 +164,7 @@ export default function DashboardPage({
             theme={theme}
             income={displayMonthSummary.income}
             expenses={displayMonthSummary.expenses}
+            creditCard={displayMonthSummary.creditCard}
           />
         </div>
       </section>
@@ -187,7 +188,11 @@ export default function DashboardPage({
       </section>
 
       {/* FINANCIAL HEALTH */}
-      <HealthScoreCard cardClass={cardClass} monthSummary={healthSummary || displayMonthSummary} goals={goals} />
+      <HealthScoreCard
+        cardClass={cardClass}
+        monthSummary={displayMonthSummary}
+        goals={goals}
+      />
 
       {/* REPORTS WIDGET */}
       <section>
